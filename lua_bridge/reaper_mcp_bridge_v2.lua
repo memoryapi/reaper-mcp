@@ -579,6 +579,31 @@ function Tools.delete_track_send(args)
     return { status = ok and "ok" or "error" }
 end
 
+function Tools.list_track_fx_params(args)
+    local tr = reaper.GetTrack(0, (args.track_index or 1) - 1)
+    if not tr then return { error = "Track not found" } end
+    local fx_idx = args.fx_index or 0
+    local num_params = reaper.TrackFX_GetNumParams(tr, fx_idx)
+    local params = {}
+    for i = 0, num_params - 1 do
+        local _, name = reaper.TrackFX_GetParamName(tr, fx_idx, i, "")
+        local val = reaper.TrackFX_GetParam(tr, fx_idx, i)
+        local _, formatted = reaper.TrackFX_GetFormattedParamValue(tr, fx_idx, i, "")
+        table.insert(params, { index = i, name = name, value = val, formatted = formatted })
+    end
+    return params
+end
+
+function Tools.set_track_fx_param(args)
+    local tr = reaper.GetTrack(0, (args.track_index or 1) - 1)
+    if not tr then return { error = "Track not found" } end
+    local fx_idx = args.fx_index or 0
+    local param_idx = args.param_index or 0
+    local val = args.value or 0
+    reaper.TrackFX_SetParam(tr, fx_idx, param_idx, val)
+    return { status = "ok" }
+end
+
 local function main()
     local f = io.open(cmd_file, "r")
     if f then

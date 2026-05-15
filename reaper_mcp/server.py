@@ -308,5 +308,28 @@ async def delete_track_send(track_index: int, send_index: int) -> str:
     import json
     return json.dumps(result, indent=2)
 
+@mcp.tool()
+async def list_track_fx_params(track_index: int, fx_index: int) -> str:
+    """
+    List all parameters for a specific FX on a track.
+    """
+    result = ipc.send_command("list_track_fx_params", {"track_index": track_index, "fx_index": fx_index})
+    import json
+    return json.dumps(result, indent=2)
+
+@mcp.tool()
+async def set_track_fx_param(track_index: int, fx_index: int, param_index: int, value: float) -> str:
+    """
+    Set a parameter value for an FX (normalized 0.0 to 1.0).
+    """
+    result = ipc.send_command("set_track_fx_param", {
+        "track_index": track_index,
+        "fx_index": fx_index,
+        "param_index": param_index,
+        "value": value
+    })
+    import json
+    return json.dumps(result, indent=2)
+
 if __name__ == "__main__":
     mcp.run(transport="stdio")
