@@ -206,5 +206,61 @@ def delete_midi_item(track_index: int, item_index: int) -> str:
     import json
     return json.dumps(result, indent=2)
 
+@mcp.tool()
+async def list_vsts(filter: Optional[str] = None) -> str:
+    """
+    List all installed VST plugins.
+    Filter by name if provided.
+    """
+    result = ipc.send_command("list_vsts", {"filter": filter})
+    import json
+    return json.dumps(result, indent=2)
+
+@mcp.tool()
+async def add_fx(track_index: int, fx_name: str, instantiate: bool = True) -> str:
+    """
+    Add an FX to a track by name.
+    """
+    result = ipc.send_command("add_fx", {"track_index": track_index, "fx_name": fx_name, "instantiate": instantiate})
+    import json
+    return json.dumps(result, indent=2)
+
+@mcp.tool()
+async def delete_track_fx(track_index: int, fx_index: int) -> str:
+    """
+    Delete an FX from a track by its 0-based index.
+    """
+    result = ipc.send_command("delete_track_fx", {"track_index": track_index, "fx_index": fx_index})
+    import json
+    return json.dumps(result, indent=2)
+
+@mcp.tool()
+async def move_track(track_index: int, target_index: int) -> str:
+    """
+    Move a track to a new index (1-based).
+    """
+    result = ipc.send_command("move_track", {"track_index": track_index, "target_index": target_index})
+    import json
+    return json.dumps(result, indent=2)
+
+@mcp.tool()
+async def set_track_folder_depth(track_index: int, depth: int) -> str:
+    """
+    Set track folder depth. 
+    1 = Folder start, 0 = Normal, -1 = Last track in folder.
+    """
+    result = ipc.send_command("set_track_folder_depth", {"track_index": track_index, "depth": depth})
+    import json
+    return json.dumps(result, indent=2)
+
+@mcp.tool()
+async def set_track_color(track_index: int, r: int, g: int, b: int) -> str:
+    """
+    Set track color (0-255 for each channel).
+    """
+    result = ipc.send_command("set_track_color", {"track_index": track_index, "r": r, "g": g, "b": b})
+    import json
+    return json.dumps(result, indent=2)
+
 if __name__ == "__main__":
     mcp.run(transport="stdio")

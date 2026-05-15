@@ -435,6 +435,86 @@ function Tools.set_track_midi(args)
     return { status = "ok" }
 end
 
+function Tools.list_vsts(args)
+    local resource_path = reaper.GetResourcePath()
+    local files = { resource_path .. "/reaper-vstplugins64.ini", resource_path .. "/reaper-vstplugins.ini" }
+    local vsts = {}
+    local filter = args.filter and args.filter:lower() or nil
+    
+    for _, path in ipairs(files) do
+        local f = io.open(path, "r")
+        if f then
+            for line in f:lines() do
+                -- Pattern: filename=id,name
+                local name = line:match(".-=.-,([^,]+)$")
+                if not name then
+                    -- Try VST3 shell pattern: WaveShell...<id=...,name
+                    name = line:match("{.-,([^,]+)$")
+                end
+                
+                if name then
+                    local is_instrument = name:match("!!!VSTi") ~= nil
+                    name = name:gsub("!!!VSTi", "")
+                    
+                    if not filter or name:lower():find(filter, 1, true) then
+                        table.insert(vsts, { name = name, is_instrument = is_instrument })
+                    end
+                end
+            end
+            f:close()
+        end
+    end
+    return vsts
+end
+
+function Tools.add_fx(args)
+    local tr = reaper.GetTrack(0, (args.track_index or 1) - 1)
+    if not tr then return { error = "Track not found" } end
+    local fx_name = args.fx_name
+    if not fx_name then return { error = "Missing fx_name" } end
+    
+    local instantiate = args.instantiate ~= false
+    local idx = reaper.TrackFX_AddByName(tr, fx_name, false, instantiate and -1 or 0)
+    
+    if idx == -1 then return { error = "Failed to add FX: " .. fx_name } end
+    return { status = "ok", index = idx }
+end
+
+function Tools.delete_track_fx(args)
+    local tr = reaper.GetTrack(0, (args.track_index or 1) - 1)
+    if not tr then return { error = "Track not found" } end
+    local fx_index = args.fx_index or 0
+    reaper.TrackFX_Delete(tr, fx_index)
+    return { status = "ok" }
+end
+
+function Tools.move_track(args)
+    local tr = reaper.GetTrack(0, (args.track_index or 1) - 1)
+    if not tr then return { error = "Track not found" } end
+    
+    local target_idx = args.target_index or 1
+    reaper.SetOnlyTrackSelected(tr)
+    reaper.ReorderSelectedTracks(target_idx - 1, 0)
+    
+    return { status = "ok" }
+end
+
+function Tools.set_track_folder_depth(args)
+    local tr = reaper.GetTrack(0, (args.track_index or 1) - 1)
+    if not tr then return { error = "Track not found" } end
+    local depth = args.depth or 0
+    reaper.SetMediaTrackInfo_Value(tr, "I_FOLDERDEPTH", depth)
+    return { status = "ok" }
+end
+
+function Tools.set_track_color(args)
+    local tr = reaper.GetTrack(0, (args.track_index or 1) - 1)
+    if not tr then return { error = "Track not found" } end
+    local r, g, b = args.r or 255, args.g or 255, args.b or 255
+    reaper.SetTrackColor(tr, reaper.ColorToNative(r, g, b))
+    return { status = "ok" }
+end
+
 local function main()
     local f = io.open(cmd_file, "r")
     if f then
