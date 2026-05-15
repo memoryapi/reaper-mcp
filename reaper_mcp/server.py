@@ -262,5 +262,51 @@ async def set_track_color(track_index: int, r: int, g: int, b: int) -> str:
     import json
     return json.dumps(result, indent=2)
 
+@mcp.tool()
+async def list_track_sends(track_index: int) -> str:
+    """
+    List all sends for a specific track.
+    """
+    result = ipc.send_command("list_track_sends", {"track_index": track_index})
+    import json
+    return json.dumps(result, indent=2)
+
+@mcp.tool()
+async def create_track_send(source_track_index: int, dest_track_index: int, volume_db: float = 0.0) -> str:
+    """
+    Create a send from source track to destination track.
+    """
+    result = ipc.send_command("create_track_send", {
+        "source_track_index": source_track_index, 
+        "dest_track_index": dest_track_index,
+        "volume_db": volume_db
+    })
+    import json
+    return json.dumps(result, indent=2)
+
+@mcp.tool()
+async def set_track_send_info(track_index: int, send_index: int, volume_db: Optional[float] = None, pan: Optional[float] = None, mute: Optional[bool] = None) -> str:
+    """
+    Update an existing send's parameters.
+    """
+    result = ipc.send_command("set_track_send_info", {
+        "track_index": track_index,
+        "send_index": send_index,
+        "volume_db": volume_db,
+        "pan": pan,
+        "mute": mute
+    })
+    import json
+    return json.dumps(result, indent=2)
+
+@mcp.tool()
+async def delete_track_send(track_index: int, send_index: int) -> str:
+    """
+    Delete a specific send from a track.
+    """
+    result = ipc.send_command("delete_track_send", {"track_index": track_index, "send_index": send_index})
+    import json
+    return json.dumps(result, indent=2)
+
 if __name__ == "__main__":
     mcp.run(transport="stdio")

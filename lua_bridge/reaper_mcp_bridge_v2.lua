@@ -517,6 +517,68 @@ function Tools.set_track_color(args)
     return { status = "ok" }
 end
 
+function Tools.list_track_sends(args)
+    local tr = reaper.GetTrack(0, (args.track_index or 1) - 1)
+    if not tr then return { error = "Track not found" } end
+    local sends = {}
+    for i = 0, reaper.GetTrackNumSends(tr, 0) - 1 do
+        local dest_tr = reaper.GetTrackSendInfo_Value(tr, 0, i, "P_DESTTRACK")
+        local _, dest_name = reaper.GetTrackName(dest_tr)
+        local vol = reaper.GetTrackSendInfo_Value(tr, 0, i, "D_VOL")
+        local pan = reaper.GetTrackSendInfo_Value(tr, 0, i, "D_PAN")
+        local mute = reaper.GetTrackSendInfo_Value(tr, 0, i, "B_MUTE") == 1
+        table.insert(sends, { 
+            index = i + 1, 
+            dest_track_index = math.floor(reaper.GetMediaTrackInfo_Value(dest_tr, "IP_TRACKNUMBER")), 
+            dest_track_name = dest_name,
+            volume_db = 20 * (vol > 0 and math.log(vol, 10) or -100),
+            pan = pan,
+            mute = mute
+        })
+    end
+    return sends
+end
+
+function Tools.create_track_send(args)
+    local src_tr = reaper.GetTrack(0, (args.source_track_index or 1) - 1)
+    local dst_tr = reaper.GetTrack(0, (args.dest_track_index or 1) - 1)
+    if not src_tr or not dst_tr then return { error = "Source or destination track not found" } end
+    
+    local idx = reaper.CreateTrackSend(src_tr, dst_tr)
+    if args.volume_db then
+        reaper.SetTrackSendInfo_Value(src_tr, 0, idx, "D_VOL", 10 ^ (args.volume_db / 20))
+    end
+    
+    return { status = "ok", index = idx + 1 }
+end
+
+function Tools.set_track_send_info(args)
+    local tr = reaper.GetTrack(0, (args.track_index or 1) - 1)
+    if not tr then return { error = "Track not found" } end
+    local idx = (args.send_index or 1) - 1
+    
+    if args.volume_db then
+        reaper.SetTrackSendInfo_Value(tr, 0, idx, "D_VOL", 10 ^ (args.volume_db / 20))
+    end
+    if args.pan then
+        reaper.SetTrackSendInfo_Value(tr, 0, idx, "D_PAN", args.pan)
+    end
+    if args.mute ~= nil then
+        reaper.SetTrackSendInfo_Value(tr, 0, idx, "B_MUTE", args.mute and 1 or 0)
+    end
+    
+    return { status = "ok" }
+end
+
+function Tools.delete_track_send(args)
+    local tr = reaper.GetTrack(0, (args.track_index or 1) - 1)
+    if not tr then return { error = "Track not found" } end
+    local idx = (args.send_index or 1) - 1
+    
+    local ok = reaper.RemoveTrackSend(tr, 0, idx)
+    return { status = ok and "ok" or "error" }
+end
+
 local function main()
     local f = io.open(cmd_file, "r")
     if f then
