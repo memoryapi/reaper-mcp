@@ -1,0 +1,460 @@
+-- @description Reaper MCP Bridge V2
+-- @author Antigravity
+-- @version 0.4
+-- @noindex
+
+local script_path = debug.getinfo(1, 'S').source:match([[^@?(.*[\/])]])
+package.path = script_path .. "?.lua;" .. package.path
+local ok, RMID = pcall(require, "rmid_lib")
+
+local temp_dir = os.getenv("TEMP") or "/tmp"
+local ipc_dir = temp_dir .. "/reaper_mcp_v2"
+local cmd_file = ipc_dir .. "/command.json"
+local resp_file = ipc_dir .. "/response.json"
+
+local function json_escape(s)
+    local escape_map = {['"']='\\"', ['\\']='\\\\', ['/']='\\/', ['\b']='\\b', ['\f']='\\f', ['\n']='\\n', ['\r']='\\r', ['\t']='\\t'}
+    return '"' .. s:gsub('["\\/\b\f\n\r\t]', escape_map) .. '"'
+end
+
+local function json_encode(v)
+    if type(v) == "string" then return json_escape(v)
+    elseif type(v) == "number" or type(v) == "boolean" then return tostring(v)
+    elseif type(v) == "table" then
+        local parts = {}
+        if #v > 0 or (next(v) == nil) then
+            for i, val in ipairs(v) do table.insert(parts, json_encode(val)) end
+            return "[" .. table.concat(parts, ",") .. "]"
+        else
+            for k, val in pairs(v) do table.insert(parts, json_escape(tostring(k)) .. ":" .. json_encode(val)) end
+            return "{" .. table.concat(parts, ",") .. "}"
+        end
+    else return "null" end
+end
+
+local function json_decode(s)
+    local id = s:match('"id"%s*:%s*"([^"]+)"')
+    local tool = s:match('"tool"%s*:%s*"([^"]+)"')
+    local args_str = s:match('"args"%s*:%s*({.*})')
+    local args = {}
+    if args_str then
+        for k in args_str:gmatch('"([^"]+)"%s*:') do
+            local p = args_str:find('"' .. k .. '"%s*:%s*"')
+            if p then
+                _, p = args_str:find('"' .. k .. '"%s*:%s*"')
+                local val_start = p + 1
+                local val_end = nil
+                local search_pos = val_start
+                while not val_end do
+                    local q = args_str:find('"', search_pos)
+                    if not q then break end
+                    local escapes = 0
+                    local b = q - 1
+                    while b >= val_start and args_str:sub(b, b) == "\\" do
+                        escapes = escapes + 1
+                        b = b - 1
+                    end
+                    if escapes % 2 == 0 then val_end = q - 1 else search_pos = q + 1 end
+                end
+                if val_end then
+                    local val = args_str:sub(val_start, val_end)
+                    val = val:gsub("\\\\", "\1"):gsub('\\"', '"'):gsub("\\n", "\n"):gsub("\\r", "\r"):gsub("\\t", "\t"):gsub("\1", "\\")
+                    args[k] = val
+                end
+            else
+                local val = args_str:match('"' .. k .. '"%s*:%s*([^,}]+)')
+                if val then
+                    val = val:match("^%s*(.-)%s*$")
+                    if val == "true" then args[k] = true
+                    elseif val == "false" then args[k] = false
+                    elseif tonumber(val) then args[k] = tonumber(val) end
+                end
+            end
+        end
+    end
+    return { id = id, tool = tool, args = args }
+end
+
+local Tools = {}
+function Tools.ping(args) return { status = "pong", v = "V2" } end
+function Tools.set_cursor_position(args)
+    local pos = args.position
+    if not pos then return { error = "Missing position" } end
+    if args.is_beats then pos = reaper.TimeMap_QNToTime(pos) end
+    reaper.SetEditCurPos(pos, true, false)
+    return { status = "ok" }
+end
+
+function Tools.create_track(args)
+    reaper.InsertTrackAtIndex(reaper.CountTracks(0), true)
+    local tr = reaper.GetTrack(0, reaper.CountTracks(0) - 1)
+    reaper.GetSetMediaTrackInfo_String(tr, "P_NAME", args.name or "New Track", true)
+    return { status = "ok", index = reaper.CountTracks(0) }
+end
+
+function Tools.delete_track(args)
+    local tr = reaper.GetTrack(0, (args.track_index or 0) - 1)
+    if tr then reaper.DeleteTrack(tr) return { status = "ok" } end
+    return { error = "Track not found" }
+end
+
+function Tools.set_track_volume(args)
+    local tr = reaper.GetTrack(0, (args.track_index or 0) - 1)
+    if tr then 
+        reaper.SetMediaTrackInfo_Value(tr, "D_VOL", 10 ^ ((args.volume_db or 0) / 20))
+        return { status = "ok" }
+    end
+    return { error = "Track not found" }
+end
+
+function Tools.get_project_info(args)
+    local num, den, bpm = reaper.TimeMap_GetTimeSigAtTime(0, 0)
+    return { bpm = bpm, time_sig = string.format("%d/%d", num, den), name = reaper.GetProjectName(0, ""), cursor = reaper.GetCursorPosition() }
+end
+
+function Tools.set_tempo(args)
+    local bpm = args.bpm
+    if bpm then
+        reaper.Master_SetTempo(bpm, true)
+        return { status = "ok" }
+    end
+    return { error = "Missing bpm" }
+end
+
+function Tools.set_time_signature(args)
+    local num = args.numerator
+    local den = args.denominator
+    if num and den then
+        reaper.SetTempoTimeSigMarker(0, -1, 0, -1, -1, -1, num, den, false)
+        return { status = "ok" }
+    end
+    return { error = "Missing numerator or denominator" }
+end
+
+function Tools.list_tracks(args)
+    local tracks = {}
+    for i = 0, reaper.CountTracks(0) - 1 do
+        local tr = reaper.GetTrack(0, i)
+        local _, name = reaper.GetTrackName(tr)
+        table.insert(tracks, { index = i + 1, name = name, fx_count = reaper.TrackFX_GetCount(tr) })
+    end
+    return tracks
+end
+
+function Tools.get_project_midi_overview(args)
+    local tracks = {}
+    for i = 0, reaper.CountTracks(0) - 1 do
+        local tr = reaper.GetTrack(0, i)
+        local _, name = reaper.GetTrackName(tr)
+        local items = {}
+        for j = 0, reaper.CountTrackMediaItems(tr) - 1 do
+            local item = reaper.GetTrackMediaItem(tr, j)
+            local take = reaper.GetActiveTake(item)
+            if take and reaper.TakeIsMIDI(take) then
+                local pos = reaper.GetMediaItemInfo_Value(item, "D_POSITION")
+                local len = reaper.GetMediaItemInfo_Value(item, "D_LENGTH")
+                local start_qn = reaper.TimeMap_timeToQN(pos)
+                local end_qn = reaper.TimeMap_timeToQN(pos + len)
+                table.insert(items, string.format("[%.1f-%.1f]", start_qn, end_qn))
+            end
+        end
+        if #items > 0 then
+            table.insert(tracks, { index = i + 1, name = name, items = table.concat(items, ", ") })
+        end
+    end
+    return tracks
+end
+
+function Tools.describe_track(args)
+    local tr = reaper.GetTrack(0, (args.track_index or 1) - 1)
+    if not tr then return { error = "Track not found" } end
+    local _, name = reaper.GetTrackName(tr)
+    
+    local min_pitch = 127
+    local max_pitch = 0
+    local note_count = 0
+    local total_len = 0
+    local durations = {}
+    
+    for i = 0, reaper.CountTrackMediaItems(tr) - 1 do
+        local item = reaper.GetTrackMediaItem(tr, i)
+        local take = reaper.GetActiveTake(item)
+        if take and reaper.TakeIsMIDI(take) then
+            local _, ncount = reaper.MIDI_CountEvts(take)
+            note_count = note_count + ncount
+            local item_len = reaper.TimeMap_timeToQN(reaper.GetMediaItemInfo_Value(item, "D_POSITION") + reaper.GetMediaItemInfo_Value(item, "D_LENGTH")) - reaper.TimeMap_timeToQN(reaper.GetMediaItemInfo_Value(item, "D_POSITION"))
+            total_len = total_len + item_len
+            
+            for n = 0, ncount - 1 do
+                local _, _, _, startppq, endppq, _, pitch, _ = reaper.MIDI_GetNote(take, n)
+                if pitch < min_pitch then min_pitch = pitch end
+                if pitch > max_pitch then max_pitch = pitch end
+                local dur = reaper.MIDI_GetProjQNFromPPQPos(take, endppq) - reaper.MIDI_GetProjQNFromPPQPos(take, startppq)
+                dur = math.floor(dur * 1000 + 0.5) / 1000 -- Round
+                durations[dur] = (durations[dur] or 0) + 1
+            end
+        end
+    end
+    
+    if note_count == 0 then return { name = name, empty = true } end
+    
+    local density = note_count / (total_len > 0 and total_len or 1)
+    local common_dur = 0
+    local max_freq = 0
+    for dur, freq in pairs(durations) do
+        if freq > max_freq then max_freq = freq; common_dur = dur end
+    end
+    
+    local type_guess = "Melodic"
+    if (max_pitch - min_pitch) <= 12 and density > 1 then type_guess = "Percussive/Drums" end
+    if (max_pitch - min_pitch) > 36 then type_guess = "Wide Range/Piano" end
+    
+    return {
+        name = name,
+        type = type_guess,
+        pitch_range = RMID.get_pitch_name(min_pitch) .. " to " .. RMID.get_pitch_name(max_pitch),
+        note_count = note_count,
+        density = string.format("%.2f notes/beat", density),
+        common_duration = common_dur
+    }
+end
+
+function Tools.get_track_info(args)
+    local tr = reaper.GetTrack(0, (args.track_index or 0) - 1)
+    if not tr then return { error = "Track not found" } end
+    local _, name = reaper.GetTrackName(tr)
+    local fx = {}
+    for i = 0, reaper.TrackFX_GetCount(tr) - 1 do
+        local _, fx_name = reaper.TrackFX_GetFXName(tr, i, "")
+        table.insert(fx, fx_name)
+    end
+    return { name = name, volume_db = 20 * math.log(reaper.GetMediaTrackInfo_Value(tr, "D_VOL"), 10), fx = fx }
+end
+
+function Tools.list_midi_items(args)
+    local tr = reaper.GetTrack(0, (args.track_index or 0) - 1)
+    if not tr then return { error = "Track not found" } end
+    local items = {}
+    for i = 0, reaper.CountTrackMediaItems(tr) - 1 do
+        local item = reaper.GetTrackMediaItem(tr, i)
+        local take = reaper.GetActiveTake(item)
+        if take and reaper.TakeIsMIDI(take) then
+            local pos = reaper.GetMediaItemInfo_Value(item, "D_POSITION")
+            local len = reaper.GetMediaItemInfo_Value(item, "D_LENGTH")
+            local start_qn = reaper.TimeMap_timeToQN(pos)
+            local end_qn = reaper.TimeMap_timeToQN(pos + len)
+            local _, notecount, cccount = reaper.MIDI_CountEvts(take)
+            local _, name = reaper.GetSetMediaItemTakeInfo_String(take, "P_NAME", "", false)
+            table.insert(items, { index = i + 1, name = name, pos_beats = start_qn, len_beats = end_qn - start_qn, note_count = notecount, cc_count = cccount })
+        end
+    end
+    return items
+end
+
+function Tools.get_track_midi(args)
+    local tr = reaper.GetTrack(0, (args.track_index or 0) - 1)
+    if not tr then return { error = "Track not found" } end
+    local _, tr_name = reaper.GetTrackName(tr)
+    local track_data = { name = tr_name, items = {} }
+    for i = 0, reaper.CountTrackMediaItems(tr) - 1 do
+        local item = reaper.GetTrackMediaItem(tr, i)
+        local take = reaper.GetActiveTake(item)
+        if take and reaper.TakeIsMIDI(take) then
+            reaper.MIDI_Sort(take)
+            local pos = reaper.GetMediaItemInfo_Value(item, "D_POSITION")
+            local len = reaper.GetMediaItemInfo_Value(item, "D_LENGTH")
+            local start_qn = reaper.TimeMap_timeToQN(pos)
+            local r_item = { pos = start_qn, len = reaper.TimeMap_timeToQN(pos + len) - start_qn, notes = {}, cc = {} }
+            local _, notecount, cccount = reaper.MIDI_CountEvts(take)
+            for n = 0, notecount - 1 do
+                local _, _, muted, startppq, endppq, chan, pitch, vel = reaper.MIDI_GetNote(take, n)
+                if not muted then
+                    local n_s = reaper.MIDI_GetProjQNFromPPQPos(take, startppq)
+                    local n_e = reaper.MIDI_GetProjQNFromPPQPos(take, endppq)
+                    table.insert(r_item.notes, { pitch = RMID.get_pitch_name(pitch), start = n_s - start_qn, dur = n_e - n_s, vel = vel })
+                end
+            end
+            table.insert(track_data.items, r_item)
+        end
+    end
+    return RMID.serialize_rmid({ bpm = math.floor(reaper.Master_GetTempo()), tracks = { track_data } })
+end
+
+function Tools.set_midi_item(args)
+    local tr = reaper.GetTrack(0, (args.track_index or 1) - 1)
+    local item = reaper.GetTrackMediaItem(tr, (args.item_index or 1) - 1)
+    if not item then return { error = "Item not found" } end
+    local take = reaper.GetActiveTake(item)
+    local data = RMID.parse_rmid(args.rmid)
+    if data.note_count == 0 then return { error = "No notes found in RMID" } end
+    
+    local r_item = data.tracks[1].items[1]
+    local qn_pos = reaper.TimeMap_timeToQN(reaper.GetMediaItemInfo_Value(item, "D_POSITION"))
+    local item_start_ppq = reaper.MIDI_GetPPQPosFromProjTime(take, reaper.GetMediaItemInfo_Value(item, "D_POSITION"))
+    local _, notes, ccs = reaper.MIDI_CountEvts(take)
+    for i = notes-1, 0, -1 do reaper.MIDI_DeleteNote(take, i) end
+    for i = ccs-1, 0, -1 do reaper.MIDI_DeleteCC(take, i) end
+    for _, note in ipairs(r_item.notes) do
+        local s = reaper.MIDI_GetPPQPosFromProjQN(take, qn_pos + note.start) - item_start_ppq
+        local e = reaper.MIDI_GetPPQPosFromProjQN(take, qn_pos + note.start + note.dur) - item_start_ppq
+        reaper.MIDI_InsertNote(take, false, false, s, e, 0, RMID.get_note_number(note.pitch), note.vel, true)
+    end
+    reaper.MIDI_Sort(take)
+    reaper.UpdateArrange()
+    return { status = "ok" }
+end
+
+function Tools.insert_midi_item(args)
+    local tr = reaper.GetTrack(0, (args.track_index or 1) - 1)
+    if not tr then return { error = "Track not found" } end
+    local data = RMID.parse_rmid(args.rmid)
+    if not data.tracks or #data.tracks == 0 or data.note_count == 0 then 
+        return { error = "No valid notes found in RMID. Check TRACK/ITEM tags and note syntax." } 
+    end
+    
+    local trace = {}
+    for _, track in ipairs(data.tracks) do
+        for _, item in ipairs(track.items) do
+            local start_t = reaper.TimeMap_QNToTime(item.pos)
+            local end_t = reaper.TimeMap_QNToTime(item.pos + item.len)
+            local m_item = reaper.CreateNewMIDIItemInProj(tr, start_t, end_t)
+            local take = reaper.GetActiveTake(m_item)
+            local item_start_ppq = reaper.MIDI_GetPPQPosFromProjTime(take, start_t)
+            for _, note in ipairs(item.notes) do
+                local s = reaper.MIDI_GetPPQPosFromProjQN(take, item.pos + note.start) - item_start_ppq
+                local e = reaper.MIDI_GetPPQPosFromProjQN(take, item.pos + note.start + note.dur) - item_start_ppq
+                reaper.MIDI_InsertNote(take, false, false, s, e, 0, RMID.get_note_number(note.pitch), note.vel, true)
+            end
+            reaper.MIDI_Sort(take)
+            table.insert(trace, "Inserted item at " .. item.pos)
+        end
+    end
+    reaper.UpdateArrange()
+    return { status = "ok", trace = trace }
+end
+
+function Tools.move_midi_item(args)
+    local tr = reaper.GetTrack(0, (args.track_index or 1) - 1)
+    local item = reaper.GetTrackMediaItem(tr, (args.item_index or 1) - 1)
+    if not item then return { error = "Item not found" } end
+    
+    local new_pos = args.new_pos_beats
+    if new_pos then
+        local t = reaper.TimeMap_QNToTime(new_pos)
+        reaper.SetMediaItemInfo_Value(item, "D_POSITION", t)
+    end
+    reaper.UpdateArrange()
+    return { status = "ok" }
+end
+
+function Tools.delete_midi_item(args)
+    local tr = reaper.GetTrack(0, (args.track_index or 1) - 1)
+    local item = reaper.GetTrackMediaItem(tr, (args.item_index or 1) - 1)
+    if tr and item then
+        reaper.DeleteTrackMediaItem(tr, item)
+        reaper.UpdateArrange()
+        return { status = "ok" }
+    end
+    return { error = "Item or Track not found" }
+end
+
+function Tools.copy_midi_item(args)
+    local tr = reaper.GetTrack(0, (args.track_index or 1) - 1)
+    local item = reaper.GetTrackMediaItem(tr, (args.item_index or 1) - 1)
+    if not item then return { error = "Item not found" } end
+    
+    local dest_tr = args.dest_track_index and reaper.GetTrack(0, args.dest_track_index - 1) or tr
+    local new_pos = args.new_pos_beats and reaper.TimeMap_QNToTime(args.new_pos_beats) or reaper.GetMediaItemInfo_Value(item, "D_POSITION")
+    
+    -- Select ONLY this item for action
+    reaper.SelectAllMediaItems(0, false)
+    reaper.SetMediaItemSelected(item, true)
+    
+    reaper.SetEditCurPos(new_pos, false, false)
+    
+    if args.pooled then
+        -- Nuclear Chunk Method: Direct injection of POOLEDEVTS
+        local _, chunk = reaper.GetItemStateChunk(item, "", false)
+        local start_t = new_pos
+        local end_t = start_t + reaper.GetMediaItemInfo_Value(item, "D_LENGTH")
+        
+        -- Generate a new Pool GUID if not present, or reuse existing
+        local pool_guid = chunk:match("POOLEDEVTS ({%x%x%x%x%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%x%x%x%x%x%x%x%x})")
+        if not pool_guid then
+            pool_guid = reaper.genGuid()
+            -- Convert MIDI SOURCE to MIDIPOOL and add POOLEDEVTS
+            chunk = chunk:gsub("<SOURCE MIDI", "<SOURCE MIDIPOOL\nPOOLEDEVTS " .. pool_guid)
+            -- Update the original item to be pooled too
+            reaper.SetItemStateChunk(item, chunk, false)
+        end
+        
+        local new_item = reaper.CreateNewMIDIItemInProj(dest_tr, start_t, end_t)
+        -- Set the new item to use the same pooled chunk (Reaper handles GUID/IGUID fixup)
+        reaper.SetItemStateChunk(new_item, chunk, false)
+        reaper.SetMediaItemInfo_Value(new_item, "D_POSITION", start_t)
+    else
+        -- Regular copy via clipboard
+        reaper.SelectAllMediaItems(0, false)
+        reaper.SetMediaItemSelected(item, true)
+        reaper.SetEditCurPos(new_pos, false, false)
+        reaper.Main_OnCommand(40698, 0) -- Edit: Copy
+        reaper.SetOnlyTrackSelected(dest_tr)
+        reaper.Main_OnCommand(40058, 0) -- Item: Paste items/tracks
+    end
+    
+    reaper.UpdateArrange()
+    return { status = "ok" }
+end
+
+function Tools.set_track_midi(args)
+    local tr = reaper.GetTrack(0, (args.track_index or 1) - 1)
+    if not tr then return { error = "Track not found" } end
+    local data = RMID.parse_rmid(args.rmid)
+    if not data.tracks or #data.tracks == 0 or data.note_count == 0 then
+        return { status = "error", error = "No valid notes found in RMID. Check formatting (TRACK/ITEM tags and note syntax)." }
+    end
+    
+    -- Clear and Insert
+    for i = reaper.CountTrackMediaItems(tr)-1, 0, -1 do reaper.DeleteTrackMediaItem(tr, reaper.GetTrackMediaItem(tr, i)) end
+    for _, track in ipairs(data.tracks) do
+        for _, item in ipairs(track.items) do
+            local start_t = reaper.TimeMap_QNToTime(item.pos)
+            local end_t = reaper.TimeMap_QNToTime(item.pos + item.len)
+            local m_item = reaper.CreateNewMIDIItemInProj(tr, start_t, end_t)
+            local take = reaper.GetActiveTake(m_item)
+            local item_start_ppq = reaper.MIDI_GetPPQPosFromProjTime(take, start_t)
+            for _, note in ipairs(item.notes) do
+                local s = reaper.MIDI_GetPPQPosFromProjQN(take, item.pos + note.start) - item_start_ppq
+                local e = reaper.MIDI_GetPPQPosFromProjQN(take, item.pos + note.start + note.dur) - item_start_ppq
+                reaper.MIDI_InsertNote(take, false, false, s, e, 0, RMID.get_note_number(note.pitch), note.vel, true)
+            end
+            reaper.MIDI_Sort(take)
+        end
+    end
+    reaper.UpdateArrange()
+    return { status = "ok" }
+end
+
+local function main()
+    local f = io.open(cmd_file, "r")
+    if f then
+        local content = f:read("*a")
+        f:close()
+        os.remove(cmd_file)
+        local cmd = json_decode(content)
+        if cmd and cmd.id and cmd.tool then
+            local result = Tools[cmd.tool] and Tools[cmd.tool](cmd.args) or { error = "Unknown tool" }
+            local out = io.open(resp_file .. ".tmp", "w")
+            if out then
+                out:write(json_encode({ id = cmd.id, ok = true, result = result }))
+                out:close()
+                os.remove(resp_file)
+                os.rename(resp_file .. ".tmp", resp_file)
+            end
+        end
+    end
+    reaper.defer(main)
+end
+
+reaper.ShowConsoleMsg("Reaper MCP Bridge V2 Started (V0.4)\n")
+main()

@@ -1,0 +1,14 @@
+[project]
+name = "reaper-mcp"
+version = "0.1.0"
+description = "MCP server for REAPER DAW"
+authors = [{ name = "Antigravity" }]
+dependencies = [
+    "mcp>=1.0.0",
+    "pydantic>=2.0.0",
+]
+requires-python = ">=3.10"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
