@@ -115,7 +115,9 @@ end
 function Tools.set_tempo(args)
     local bpm = args.bpm
     if bpm then
-        reaper.Master_SetTempo(bpm, true)
+        local num, den, _ = reaper.TimeMap_GetTimeSigAtTime(0, 0)
+        reaper.SetTempoTimeSigMarker(0, -1, 0, -1, -1, bpm, num, den, false)
+        reaper.UpdateTimeline()
         return { status = "ok" }
     end
     return { error = "Missing bpm" }
