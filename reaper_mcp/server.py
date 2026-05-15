@@ -101,9 +101,23 @@ def insert_midi_item(track_index: int, rmid: str) -> str:
     return json.dumps(result, indent=2)
 
 @mcp.tool()
-def move_midi_item(track_index: int, item_index: int, new_pos_beats: float) -> str:
-    """Move a MIDI item to a new position in beats."""
-    result = ipc.send_command("move_midi_item", {
+def list_midi_items(track_index: int) -> str:
+    """List all MIDI items on a track with their positions and event counts."""
+    result = ipc.send_command("list_midi_items", {"track_index": track_index})
+    import json
+    return json.dumps(result, indent=2)
+
+@mcp.tool()
+def list_media_items(track_index: int) -> str:
+    """List ALL media items (Audio and MIDI) on a track with their types and positions."""
+    result = ipc.send_command("list_media_items", {"track_index": track_index})
+    import json
+    return json.dumps(result, indent=2)
+
+@mcp.tool()
+def move_media_item(track_index: int, item_index: int, new_pos_beats: float) -> str:
+    """Move a media item (Audio or MIDI) to a new position in beats."""
+    result = ipc.send_command("move_media_item", {
         "track_index": track_index, 
         "item_index": item_index, 
         "new_pos_beats": new_pos_beats
@@ -112,9 +126,16 @@ def move_midi_item(track_index: int, item_index: int, new_pos_beats: float) -> s
     return json.dumps(result, indent=2)
 
 @mcp.tool()
-def copy_midi_item(track_index: int, item_index: int, new_pos_beats: float, dest_track_index: Optional[int] = None, pooled: bool = False) -> str:
-    """Copy a MIDI item (optionally pooled/ghost copy)."""
-    result = ipc.send_command("copy_midi_item", {
+def delete_media_item(track_index: int, item_index: int) -> str:
+    """Delete a specific media item (Audio or MIDI) from a track."""
+    result = ipc.send_command("delete_media_item", {"track_index": track_index, "item_index": item_index})
+    import json
+    return json.dumps(result, indent=2)
+
+@mcp.tool()
+def copy_media_item(track_index: int, item_index: int, new_pos_beats: float, dest_track_index: Optional[int] = None, pooled: bool = False) -> str:
+    """Copy a media item (supports MIDI pooling for MIDI items)."""
+    result = ipc.send_command("copy_media_item", {
         "track_index": track_index,
         "item_index": item_index,
         "new_pos_beats": new_pos_beats,

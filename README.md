@@ -46,15 +46,16 @@ The project consists of two main components:
 - `set_track_send_info(track_index, send_index, ...)`: Update volume, pan, or mute status.
 - `delete_track_send(track_index, send_index)`: Remove a send.
 
-### MIDI & Composition
-- `get_project_midi_overview()`: High-level summary of MIDI items across all tracks.
-- `get_track_midi(track_index)`: Read all MIDI data from a track in RMID format.
-- `describe_track(track_index)`: Get a musical analysis (pitch range, density, common durations).
-- `list_midi_items(track_index)`: List all MIDI items on a specific track.
-- `insert_midi_item(track_index, rmid)`: Add new MIDI data without deleting existing items.
-- `set_midi_item(track_index, item_index, rmid)`: Replace the content of a specific item.
-- `move_midi_item(track_index, item_index, new_pos_beats)`: Move an item.
-- `delete_midi_item(track_index, item_index)`: Remove an item.
+### Media & Composition
+- `list_media_items(track_index)`: List **all** timeline objects (Audio and MIDI) with their type and position.
+- `list_midi_items(track_index)`: List only MIDI items with detailed note/CC counts.
+- `move_media_item(track_index, item_index, new_pos_beats)`: Move any item (Audio or MIDI) to a new position.
+- `delete_media_item(track_index, item_index)`: Remove any item from the timeline.
+- `get_track_midi(track_index)`: Read MIDI data in RMID format (MIDI only).
+- `insert_midi_item(track_index, rmid)`: Add new MIDI data.
+- `set_midi_item(track_index, item_index, rmid)`: Replace MIDI content.
+- `copy_media_item(...)`: Copy items (supports MIDI pooling for MIDI).
+- `describe_track(track_index)`: Musical analysis of the track content.
 
 ## RMID Format
 

@@ -253,6 +253,39 @@ function Tools.list_midi_items(args)
     return items
 end
 
+function Tools.list_media_items(args)
+    local tr = reaper.GetTrack(0, (args.track_index or 0) - 1)
+    if not tr then return { error = "Track not found" } end
+    local items = {}
+    for i = 0, reaper.CountTrackMediaItems(tr) - 1 do
+        local item = reaper.GetTrackMediaItem(tr, i)
+        local take = reaper.GetActiveTake(item)
+        local pos = reaper.GetMediaItemInfo_Value(item, "D_POSITION")
+        local len = reaper.GetMediaItemInfo_Value(item, "D_LENGTH")
+        local start_qn = reaper.TimeMap_timeToQN(pos)
+        local end_qn = reaper.TimeMap_timeToQN(pos + len)
+        local name = "[Unnamed]"
+        local itype = "Audio"
+        
+        if take then
+            local _, tname = reaper.GetSetMediaItemTakeInfo_String(take, "P_NAME", "", false)
+            name = tname
+            if reaper.TakeIsMIDI(take) then
+                itype = "MIDI"
+            end
+        end
+        
+        table.insert(items, { 
+            index = i + 1, 
+            name = name, 
+            type = itype,
+            pos_beats = start_qn, 
+            len_beats = end_qn - start_qn 
+        })
+    end
+    return items
+end
+
 function Tools.get_track_midi(args)
     local tr = reaper.GetTrack(0, (args.track_index or 0) - 1)
     if not tr then return { error = "Track not found" } end
@@ -335,7 +368,7 @@ function Tools.insert_midi_item(args)
     return { status = "ok", trace = trace }
 end
 
-function Tools.move_midi_item(args)
+function Tools.move_media_item(args)
     local tr = reaper.GetTrack(0, (args.track_index or 1) - 1)
     local item = reaper.GetTrackMediaItem(tr, (args.item_index or 1) - 1)
     if not item then return { error = "Item not found" } end
@@ -349,7 +382,7 @@ function Tools.move_midi_item(args)
     return { status = "ok" }
 end
 
-function Tools.delete_midi_item(args)
+function Tools.delete_media_item(args)
     local tr = reaper.GetTrack(0, (args.track_index or 1) - 1)
     local item = reaper.GetTrackMediaItem(tr, (args.item_index or 1) - 1)
     if tr and item then
@@ -360,7 +393,7 @@ function Tools.delete_midi_item(args)
     return { error = "Item or Track not found" }
 end
 
-function Tools.copy_midi_item(args)
+function Tools.copy_media_item(args)
     local tr = reaper.GetTrack(0, (args.track_index or 1) - 1)
     local item = reaper.GetTrackMediaItem(tr, (args.item_index or 1) - 1)
     if not item then return { error = "Item not found" } end
