@@ -1,5 +1,5 @@
 import asyncio
-from typing import Optional
+from typing import Optional, Any
 from mcp.server.fastmcp import FastMCP
 from reaper_mcp.ipc import ReaperIPC
 
@@ -284,6 +284,18 @@ async def set_track_color(track_index: int, r: int, g: int, b: int) -> str:
     return json.dumps(result, indent=2)
 
 @mcp.tool()
+async def set_track_channels(track_index: int, num_channels: int) -> str:
+    """
+    Set the TOTAL number of audio channels for a track.
+    - Default is 2 (Stereo).
+    - Set to 4 to enable one sidechain input (channels 3/4).
+    - Set to 6 to enable two sidechain inputs (channels 3/4 and 5/6).
+    """
+    result = ipc.send_command("set_track_channels", {"track_index": track_index, "num_channels": num_channels})
+    import json
+    return json.dumps(result, indent=2)
+
+@mcp.tool()
 async def list_track_sends(track_index: int) -> str:
     """
     List all sends for a specific track.
@@ -293,29 +305,43 @@ async def list_track_sends(track_index: int) -> str:
     return json.dumps(result, indent=2)
 
 @mcp.tool()
-async def create_track_send(source_track_index: int, dest_track_index: int, volume_db: float = 0.0) -> str:
+async def create_track_send(source_track_index: int, dest_track_index: int, volume_db: float = 0.0, src_chan: Optional[Any] = None, dst_chan: Optional[Any] = None) -> str:
     """
     Create a send from source track to destination track.
+    
+    CHANNEL MAPPING (CRITICAL):
+    - ALWAYS use STRINGS for stereo pairs: "1/2", "3/4", "5/6", etc.
+    - "3/4" is the standard sidechain input for most plugins.
+    - "5/6" can be used for secondary sidechains (requires manual pin mapping).
+    - WARNING: Do NOT use integers. An integer '3' is a raw bitfield that maps to '4/5', NOT '3/4'.
     """
     result = ipc.send_command("create_track_send", {
         "source_track_index": source_track_index, 
         "dest_track_index": dest_track_index,
-        "volume_db": volume_db
+        "volume_db": volume_db,
+        "src_chan": src_chan,
+        "dst_chan": dst_chan
     })
     import json
     return json.dumps(result, indent=2)
 
 @mcp.tool()
-async def set_track_send_info(track_index: int, send_index: int, volume_db: Optional[float] = None, pan: Optional[float] = None, mute: Optional[bool] = None) -> str:
+async def set_track_send_info(track_index: int, send_index: int, volume_db: Optional[float] = None, pan: Optional[float] = None, mute: Optional[bool] = None, src_chan: Optional[Any] = None, dst_chan: Optional[Any] = None) -> str:
     """
     Update an existing send's parameters.
+    
+    CHANNEL MAPPING (CRITICAL):
+    - ALWAYS use STRINGS for stereo pairs: "1/2", "3/4", "5/6", etc.
+    - WARNING: Do NOT use integers. An integer '3' is a raw bitfield that maps to '4/5', NOT '3/4'.
     """
     result = ipc.send_command("set_track_send_info", {
         "track_index": track_index,
         "send_index": send_index,
         "volume_db": volume_db,
         "pan": pan,
-        "mute": mute
+        "mute": mute,
+        "src_chan": src_chan,
+        "dst_chan": dst_chan
     })
     import json
     return json.dumps(result, indent=2)

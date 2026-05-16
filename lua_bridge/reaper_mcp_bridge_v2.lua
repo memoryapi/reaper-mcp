@@ -76,6 +76,34 @@ local function json_decode(s)
 end
 
 local Tools = {}
+
+local function parse_channels(s)
+    if not s or s == "" then return nil end
+    if type(s) == "number" then return s end
+    if type(s) ~= "string" then return nil end
+    
+    -- Stereo pair: "1/2", "3/4", etc.
+    local start_ch, stop_ch = s:match("(%d+)/(%d+)")
+    if start_ch and stop_ch then
+        local start_idx = tonumber(start_ch) - 1
+        local num = tonumber(stop_ch) - tonumber(start_ch) + 1
+        -- Reaper bits: 0-4=start, 5-9=num(0=2, 1=1, 2=3...), 10=mono
+        local num_val = num
+        if num == 2 then num_val = 0 end
+        return start_idx | (num_val << 5)
+    end
+    
+    -- Mono: "1", "3", etc.
+    local mono_ch = s:match("^(%d+)$")
+    if mono_ch then
+        local start_idx = tonumber(mono_ch) - 1
+        return start_idx | (1 << 5) | (1 << 10)
+    end
+    
+    -- Fallback to tonumber if it's just a raw index string
+    return tonumber(s)
+end
+
 function Tools.ping(args) return { status = "pong", v = "V2" } end
 function Tools.set_cursor_position(args)
     local pos = args.position
@@ -550,6 +578,14 @@ function Tools.set_track_color(args)
     return { status = "ok" }
 end
 
+function Tools.set_track_channels(args)
+    local tr = reaper.GetTrack(0, (args.track_index or 1) - 1)
+    if not tr then return { error = "Track not found" } end
+    local n = args.num_channels or 2
+    reaper.SetMediaTrackInfo_Value(tr, "I_NCHAN", n)
+    return { status = "ok" }
+end
+
 function Tools.list_track_sends(args)
     local tr = reaper.GetTrack(0, (args.track_index or 1) - 1)
     if not tr then return { error = "Track not found" } end
@@ -560,13 +596,17 @@ function Tools.list_track_sends(args)
         local vol = reaper.GetTrackSendInfo_Value(tr, 0, i, "D_VOL")
         local pan = reaper.GetTrackSendInfo_Value(tr, 0, i, "D_PAN")
         local mute = reaper.GetTrackSendInfo_Value(tr, 0, i, "B_MUTE") == 1
+        local src_chan = reaper.GetTrackSendInfo_Value(tr, 0, i, "I_SRCCHAN")
+        local dst_chan = reaper.GetTrackSendInfo_Value(tr, 0, i, "I_DSTCHAN")
         table.insert(sends, { 
             index = i + 1, 
             dest_track_index = math.floor(reaper.GetMediaTrackInfo_Value(dest_tr, "IP_TRACKNUMBER")), 
             dest_track_name = dest_name,
             volume_db = 20 * (vol > 0 and math.log(vol, 10) or -100),
             pan = pan,
-            mute = mute
+            mute = mute,
+            src_chan = src_chan,
+            dst_chan = dst_chan
         })
     end
     return sends
@@ -581,6 +621,12 @@ function Tools.create_track_send(args)
     if args.volume_db then
         reaper.SetTrackSendInfo_Value(src_tr, 0, idx, "D_VOL", 10 ^ (args.volume_db / 20))
     end
+    
+    local s_ch = parse_channels(args.src_chan)
+    if s_ch then reaper.SetTrackSendInfo_Value(src_tr, 0, idx, "I_SRCCHAN", s_ch) end
+    
+    local d_ch = parse_channels(args.dst_chan)
+    if d_ch then reaper.SetTrackSendInfo_Value(src_tr, 0, idx, "I_DSTCHAN", d_ch) end
     
     return { status = "ok", index = idx + 1 }
 end
@@ -599,6 +645,12 @@ function Tools.set_track_send_info(args)
     if args.mute ~= nil then
         reaper.SetTrackSendInfo_Value(tr, 0, idx, "B_MUTE", args.mute and 1 or 0)
     end
+    
+    local s_ch = parse_channels(args.src_chan)
+    if s_ch then reaper.SetTrackSendInfo_Value(tr, 0, idx, "I_SRCCHAN", s_ch) end
+    
+    local d_ch = parse_channels(args.dst_chan)
+    if d_ch then reaper.SetTrackSendInfo_Value(tr, 0, idx, "I_DSTCHAN", d_ch) end
     
     return { status = "ok" }
 end
