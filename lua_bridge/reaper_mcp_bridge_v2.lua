@@ -39,32 +39,42 @@ local function json_decode(s)
     local args = {}
     if args_str then
         for k in args_str:gmatch('"([^"]+)"%s*:') do
-            local p = args_str:find('"' .. k .. '"%s*:%s*"')
-            if p then
-                _, p = args_str:find('"' .. k .. '"%s*:%s*"')
-                local val_start = p + 1
-                local val_end = nil
-                local search_pos = val_start
-                while not val_end do
-                    local q = args_str:find('"', search_pos)
-                    if not q then break end
-                    local escapes = 0
-                    local b = q - 1
-                    while b >= val_start and args_str:sub(b, b) == "\\" do
-                        escapes = escapes + 1
-                        b = b - 1
+            local _, p_colon = args_str:find('"' .. k .. '"%s*:')
+            if p_colon then
+                local val_start = p_colon + 1
+                while args_str:sub(val_start, val_start):match("%s") do val_start = val_start + 1 end
+                local first_char = args_str:sub(val_start, val_start)
+                
+                if first_char == '"' then
+                    local val_end = nil
+                    local search_pos = val_start + 1
+                    while not val_end do
+                        local q = args_str:find('"', search_pos)
+                        if not q then break end
+                        local escapes = 0
+                        local b = q - 1
+                        while b >= val_start and args_str:sub(b, b) == "\\" do escapes = escapes + 1; b = b - 1 end
+                        if escapes % 2 == 0 then val_end = q else search_pos = q + 1 end
                     end
-                    if escapes % 2 == 0 then val_end = q - 1 else search_pos = q + 1 end
-                end
-                if val_end then
-                    local val = args_str:sub(val_start, val_end)
-                    val = val:gsub("\\\\", "\1"):gsub('\\"', '"'):gsub("\\n", "\n"):gsub("\\r", "\r"):gsub("\\t", "\t"):gsub("\1", "\\")
-                    args[k] = val
-                end
-            else
-                local val = args_str:match('"' .. k .. '"%s*:%s*([^,}]+)')
-                if val then
-                    val = val:match("^%s*(.-)%s*$")
+                    if val_end then
+                        local val = args_str:sub(val_start + 1, val_end - 1)
+                        args[k] = val:gsub("\\\\", "\1"):gsub('\\"', '"'):gsub("\\n", "\n"):gsub("\\r", "\r"):gsub("\\t", "\t"):gsub("\1", "\\")
+                    end
+                elseif first_char == '[' then
+                    local val_end = args_str:find(']', val_start)
+                    if val_end then
+                        local array_str = args_str:sub(val_start + 1, val_end - 1)
+                        local list = {}
+                        for item in array_str:gmatch('([^,]+)') do
+                            item = item:match("^%s*(.-)%s*$")
+                            if tonumber(item) then table.insert(list, tonumber(item))
+                            elseif item:match('^"(.*)"$') then table.insert(list, item:match('^"(.*)"$'))
+                            end
+                        end
+                        args[k] = list
+                    end
+                else
+                    local val = args_str:match('^([^,}%s]+)', val_start)
                     if val == "true" then args[k] = true
                     elseif val == "false" then args[k] = false
                     elseif tonumber(val) then args[k] = tonumber(val) end
@@ -76,6 +86,31 @@ local function json_decode(s)
 end
 
 local Tools = {}
+
+local function channels_to_mask(channels)
+    local low = 0
+    local high = 0
+    for _, ch in ipairs(channels) do
+        local idx = tonumber(ch) - 1 -- 1-based to 0-based
+        if idx < 32 then
+            low = low | (1 << idx)
+        elseif idx < 64 then
+            high = high | (1 << (idx - 32))
+        end
+    end
+    return low, high
+end
+
+local function mask_to_channels(low, high)
+    local channels = {}
+    for i = 0, 31 do
+        if (low & (1 << i)) ~= 0 then table.insert(channels, i + 1) end
+    end
+    for i = 0, 31 do
+        if (high & (1 << i)) ~= 0 then table.insert(channels, i + 33) end
+    end
+    return channels
+end
 
 local function parse_channels(s)
     if not s or s == "" then return nil end
@@ -687,6 +722,46 @@ function Tools.set_track_fx_param(args)
     local val = args.value or 0
     reaper.TrackFX_SetParam(tr, fx_idx, param_idx, val)
     return { status = "ok" }
+end
+
+function Tools.get_track_fx_pins(args)
+    local tr = reaper.GetTrack(0, (args.track_index or 1) - 1)
+    if not tr then return { error = "Track not found" } end
+    local fx_idx = args.fx_index or 0
+    
+    local _, num_ins, num_outs = reaper.TrackFX_GetIOSize(tr, fx_idx)
+    
+    local pins = { inputs = {}, outputs = {} }
+    
+    for i = 0, num_ins - 1 do
+        local low, high = reaper.TrackFX_GetPinMappings(tr, fx_idx, 0, i)
+        table.insert(pins.inputs, { pin = i + 1, channels = mask_to_channels(low, high) })
+    end
+    
+    for i = 0, num_outs - 1 do
+        local low, high = reaper.TrackFX_GetPinMappings(tr, fx_idx, 1, i)
+        table.insert(pins.outputs, { pin = i + 1, channels = mask_to_channels(low, high) })
+    end
+    
+    return pins
+end
+
+function Tools.set_track_fx_pins(args)
+    local tr = reaper.GetTrack(0, (args.track_index or 1) - 1)
+    if not tr then return { error = "Track not found" } end
+    local fx_idx = args.fx_index or 0
+    local is_output = args.is_output and 1 or 0
+    local pin_idx = (args.pin_index or 1) - 1
+    
+    local low, high
+    if args.channels then
+        low, high = channels_to_mask(args.channels)
+    else
+        low, high = args.low32 or 0, args.high32 or 0
+    end
+    
+    local ok = reaper.TrackFX_SetPinMappings(tr, fx_idx, is_output, pin_idx, low, high)
+    return { status = ok and "ok" or "error" }
 end
 
 local function main()

@@ -378,5 +378,33 @@ async def set_track_fx_param(track_index: int, fx_index: int, param_index: int, 
     import json
     return json.dumps(result, indent=2)
 
+@mcp.tool()
+async def get_track_fx_pins(track_index: int, fx_index: int) -> str:
+    """
+    List the input and output pin mappings for a specific FX.
+    Shows which track channels are routed to each plugin pin.
+    """
+    result = ipc.send_command("get_track_fx_pins", {"track_index": track_index, "fx_index": fx_index})
+    import json
+    return json.dumps(result, indent=2)
+
+@mcp.tool()
+async def set_track_fx_pins(track_index: int, fx_index: int, is_output: bool, pin_index: int, channels: list[int]) -> str:
+    """
+    Configure the pin mapping for an FX.
+    - is_output: True for output pins, False for input pins.
+    - pin_index: 1-based index of the plugin pin.
+    - channels: List of 1-based track channel indices to map to this pin.
+    """
+    result = ipc.send_command("set_track_fx_pins", {
+        "track_index": track_index,
+        "fx_index": fx_index,
+        "is_output": is_output,
+        "pin_index": pin_index,
+        "channels": channels
+    })
+    import json
+    return json.dumps(result, indent=2)
+
 if __name__ == "__main__":
     mcp.run(transport="stdio")

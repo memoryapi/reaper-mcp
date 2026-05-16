@@ -40,6 +40,8 @@ The project consists of two main components:
 - `delete_track_fx(track_index, fx_index)`: Remove an FX.
 - `list_track_fx_params(track_index, fx_index)`: List all parameters for a specific FX, including current values.
 - `set_track_fx_param(track_index, fx_index, param_index, value)`: Set a parameter value (normalized 0.0 to 1.0). For dropdowns, use steps (e.g., 0.0, 0.5, 1.0).
+- `get_track_fx_pins(track_index, fx_index)`: List the input/output pin mappings for an FX.
+- `set_track_fx_pins(track_index, fx_index, is_output, pin_index, channels)`: Configure which track channels map to which plugin pins.
 
 ### Routing & Sends
 - `list_track_sends(track_index)`: View outgoing sends.
