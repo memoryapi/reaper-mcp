@@ -56,16 +56,16 @@ The project consists of two main components:
 - `get_selected_items()`: List all currently selected media items (Audio/MIDI) and their track indices.
 
 ### Media & Composition
-- `list_media_items(track_index)`: List **all** timeline objects (Audio and MIDI) with their type and position.
-- `list_midi_items(track_index)`: List only MIDI items with detailed note/CC counts.
+- `list_media_items(track_index, start_beats, end_beats)`: List **all** timeline objects (Audio and MIDI) with their type and position, optionally filtered by range.
+- `list_midi_items(track_index, start_beats, end_beats)`: List only MIDI items with detailed note/CC counts, optionally filtered by range.
 - `move_media_item(track_index, item_index, new_pos_beats)`: Move any item (Audio or MIDI) to a new position.
 - `delete_media_item(track_index, item_index)`: Remove any item from the timeline.
-- `get_track_midi(track_index)`: Read MIDI data in RMID format for all items on a track.
+- `get_track_midi(track_index, start_beats, end_beats)`: Read MIDI data in RMID format, optionally filtered by range.
 - `get_midi_item(track_index, item_index)`: Read MIDI data in RMID format for a single specific clip.
 - `insert_midi_item(track_index, rmid)`: Add new MIDI data.
 - `set_midi_item(track_index, item_index, rmid)`: Replace MIDI content.
 - `copy_media_item(...)`: Copy items (supports MIDI pooling for MIDI).
-- `describe_track(track_index)`: Musical analysis of the track content.
+- `describe_track(track_index, start_beats, end_beats)`: Musical analysis of the track content, optionally filtered by range.
 
 ## RMID Format
 

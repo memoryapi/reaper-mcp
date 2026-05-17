@@ -235,6 +235,9 @@ function Tools.describe_track(args)
     if not tr then return { error = "Track not found" } end
     local _, name = reaper.GetTrackName(tr)
     
+    local range_start = args.start_beats
+    local range_end = args.end_beats
+    
     local min_pitch = 127
     local max_pitch = 0
     local note_count = 0
@@ -245,18 +248,44 @@ function Tools.describe_track(args)
         local item = reaper.GetTrackMediaItem(tr, i)
         local take = reaper.GetActiveTake(item)
         if take and reaper.TakeIsMIDI(take) then
-            local _, ncount = reaper.MIDI_CountEvts(take)
-            note_count = note_count + ncount
-            local item_len = reaper.TimeMap_timeToQN(reaper.GetMediaItemInfo_Value(item, "D_POSITION") + reaper.GetMediaItemInfo_Value(item, "D_LENGTH")) - reaper.TimeMap_timeToQN(reaper.GetMediaItemInfo_Value(item, "D_POSITION"))
-            total_len = total_len + item_len
+            local pos = reaper.GetMediaItemInfo_Value(item, "D_POSITION")
+            local len = reaper.GetMediaItemInfo_Value(item, "D_LENGTH")
+            local start_qn = reaper.TimeMap_timeToQN(pos)
+            local end_qn = reaper.TimeMap_timeToQN(pos + len)
             
-            for n = 0, ncount - 1 do
-                local _, _, _, startppq, endppq, _, pitch, _ = reaper.MIDI_GetNote(take, n)
-                if pitch < min_pitch then min_pitch = pitch end
-                if pitch > max_pitch then max_pitch = pitch end
-                local dur = reaper.MIDI_GetProjQNFromPPQPos(take, endppq) - reaper.MIDI_GetProjQNFromPPQPos(take, startppq)
-                dur = math.floor(dur * 1000 + 0.5) / 1000 -- Round
-                durations[dur] = (durations[dur] or 0) + 1
+            local include_item = true
+            if range_start and end_qn <= range_start then include_item = false end
+            if range_end and start_qn >= range_end then include_item = false end
+            
+            if include_item then
+                local act_start = start_qn
+                local act_end = end_qn
+                if range_start and range_start > act_start then act_start = range_start end
+                if range_end and range_end < act_end then act_end = range_end end
+                total_len = total_len + (act_end - act_start)
+                
+                local _, ncount = reaper.MIDI_CountEvts(take)
+                for n = 0, ncount - 1 do
+                    local _, _, muted, startppq, endppq, _, pitch, _ = reaper.MIDI_GetNote(take, n)
+                    if not muted then
+                        local n_s = reaper.MIDI_GetProjQNFromPPQPos(take, startppq)
+                        local n_e = reaper.MIDI_GetProjQNFromPPQPos(take, endppq)
+                        
+                        local include_note = true
+                        if range_start and n_e <= range_start then include_note = false end
+                        if range_end and n_s >= range_end then include_note = false end
+                        
+                        if include_note then
+                            note_count = note_count + 1
+                            if pitch < min_pitch then min_pitch = pitch end
+                            if pitch > max_pitch then max_pitch = pitch end
+                            
+                            local dur = n_e - n_s
+                            dur = math.floor(dur * 1000 + 0.5) / 1000
+                            durations[dur] = (durations[dur] or 0) + 1
+                        end
+                    end
+                end
             end
         end
     end
@@ -300,6 +329,9 @@ function Tools.list_midi_items(args)
     local tr = reaper.GetTrack(0, (args.track_index or 0) - 1)
     if not tr then return { error = "Track not found" } end
     local items = {}
+    local range_start = args.start_beats
+    local range_end = args.end_beats
+    
     for i = 0, reaper.CountTrackMediaItems(tr) - 1 do
         local item = reaper.GetTrackMediaItem(tr, i)
         local take = reaper.GetActiveTake(item)
@@ -308,9 +340,16 @@ function Tools.list_midi_items(args)
             local len = reaper.GetMediaItemInfo_Value(item, "D_LENGTH")
             local start_qn = reaper.TimeMap_timeToQN(pos)
             local end_qn = reaper.TimeMap_timeToQN(pos + len)
-            local _, notecount, cccount = reaper.MIDI_CountEvts(take)
-            local _, name = reaper.GetSetMediaItemTakeInfo_String(take, "P_NAME", "", false)
-            table.insert(items, { index = i + 1, name = name, pos_beats = start_qn, len_beats = end_qn - start_qn, note_count = notecount, cc_count = cccount })
+            
+            local include = true
+            if range_start and end_qn <= range_start then include = false end
+            if range_end and start_qn >= range_end then include = false end
+            
+            if include then
+                local _, notecount, cccount = reaper.MIDI_CountEvts(take)
+                local _, name = reaper.GetSetMediaItemTakeInfo_String(take, "P_NAME", "", false)
+                table.insert(items, { index = i + 1, name = name, pos_beats = start_qn, len_beats = end_qn - start_qn, note_count = notecount, cc_count = cccount })
+            end
         end
     end
     return items
@@ -320,6 +359,9 @@ function Tools.list_media_items(args)
     local tr = reaper.GetTrack(0, (args.track_index or 0) - 1)
     if not tr then return { error = "Track not found" } end
     local items = {}
+    local range_start = args.start_beats
+    local range_end = args.end_beats
+    
     for i = 0, reaper.CountTrackMediaItems(tr) - 1 do
         local item = reaper.GetTrackMediaItem(tr, i)
         local take = reaper.GetActiveTake(item)
@@ -327,24 +369,31 @@ function Tools.list_media_items(args)
         local len = reaper.GetMediaItemInfo_Value(item, "D_LENGTH")
         local start_qn = reaper.TimeMap_timeToQN(pos)
         local end_qn = reaper.TimeMap_timeToQN(pos + len)
-        local name = "[Unnamed]"
-        local itype = "Audio"
         
-        if take then
-            local _, tname = reaper.GetSetMediaItemTakeInfo_String(take, "P_NAME", "", false)
-            name = tname
-            if reaper.TakeIsMIDI(take) then
-                itype = "MIDI"
+        local include = true
+        if range_start and end_qn <= range_start then include = false end
+        if range_end and start_qn >= range_end then include = false end
+        
+        if include then
+            local name = "[Unnamed]"
+            local itype = "Audio"
+            
+            if take then
+                local _, tname = reaper.GetSetMediaItemTakeInfo_String(take, "P_NAME", "", false)
+                name = tname
+                if reaper.TakeIsMIDI(take) then
+                    itype = "MIDI"
+                end
             end
+            
+            table.insert(items, { 
+                index = i + 1, 
+                name = name, 
+                type = itype,
+                pos_beats = start_qn, 
+                len_beats = end_qn - start_qn 
+            })
         end
-        
-        table.insert(items, { 
-            index = i + 1, 
-            name = name, 
-            type = itype,
-            pos_beats = start_qn, 
-            len_beats = end_qn - start_qn 
-        })
     end
     return items
 end
@@ -354,29 +403,48 @@ function Tools.get_track_midi(args)
     if not tr then return { error = "Track not found" } end
     local _, tr_name = reaper.GetTrackName(tr)
     local track_data = { name = tr_name, items = {} }
+    local range_start = args.start_beats
+    local range_end = args.end_beats
+    
     for i = 0, reaper.CountTrackMediaItems(tr) - 1 do
         local item = reaper.GetTrackMediaItem(tr, i)
         local take = reaper.GetActiveTake(item)
         if take and reaper.TakeIsMIDI(take) then
-            reaper.MIDI_Sort(take)
             local pos = reaper.GetMediaItemInfo_Value(item, "D_POSITION")
             local len = reaper.GetMediaItemInfo_Value(item, "D_LENGTH")
             local start_qn = reaper.TimeMap_timeToQN(pos)
-            local r_item = { pos = start_qn, len = reaper.TimeMap_timeToQN(pos + len) - start_qn, notes = {}, cc = {} }
-            local _, notecount, cccount = reaper.MIDI_CountEvts(take)
-            for n = 0, notecount - 1 do
-                local _, _, muted, startppq, endppq, chan, pitch, vel = reaper.MIDI_GetNote(take, n)
-                if not muted then
-                    local n_s = reaper.MIDI_GetProjQNFromPPQPos(take, startppq)
-                    local n_e = reaper.MIDI_GetProjQNFromPPQPos(take, endppq)
-                    table.insert(r_item.notes, { pitch = RMID.get_pitch_name(pitch), start = n_s - start_qn, dur = n_e - n_s, vel = vel })
+            local end_qn = reaper.TimeMap_timeToQN(pos + len)
+            
+            local include_item = true
+            if range_start and end_qn <= range_start then include_item = false end
+            if range_end and start_qn >= range_end then include_item = false end
+            
+            if include_item then
+                reaper.MIDI_Sort(take)
+                local r_item = { pos = start_qn, len = end_qn - start_qn, notes = {}, cc = {} }
+                local _, notecount, cccount = reaper.MIDI_CountEvts(take)
+                for n = 0, notecount - 1 do
+                    local _, _, muted, startppq, endppq, chan, pitch, vel = reaper.MIDI_GetNote(take, n)
+                    if not muted then
+                        local n_s = reaper.MIDI_GetProjQNFromPPQPos(take, startppq)
+                        local n_e = reaper.MIDI_GetProjQNFromPPQPos(take, endppq)
+                        
+                        local include_note = true
+                        if range_start and n_e <= range_start then include_note = false end
+                        if range_end and n_s >= range_end then include_note = false end
+                        
+                        if include_note then
+                            table.insert(r_item.notes, { pitch = RMID.get_pitch_name(pitch), start = n_s - start_qn, dur = n_e - n_s, vel = vel })
+                        end
+                    end
                 end
+                table.insert(track_data.items, r_item)
             end
-            table.insert(track_data.items, r_item)
         end
     end
     return RMID.serialize_rmid({ bpm = math.floor(reaper.Master_GetTempo()), tracks = { track_data } })
 end
+
 
 function Tools.get_midi_item(args)
     local tr = reaper.GetTrack(0, (args.track_index or 1) - 1)

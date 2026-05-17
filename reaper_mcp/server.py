@@ -101,16 +101,24 @@ def insert_midi_item(track_index: int, rmid: str) -> str:
     return json.dumps(result, indent=2)
 
 @mcp.tool()
-def list_midi_items(track_index: int) -> str:
-    """List all MIDI items on a track with their positions and event counts."""
-    result = ipc.send_command("list_midi_items", {"track_index": track_index})
+def list_midi_items(track_index: int, start_beats: Optional[float] = None, end_beats: Optional[float] = None) -> str:
+    """List all MIDI items on a track with their positions and event counts, optionally filtered by range."""
+    result = ipc.send_command("list_midi_items", {
+        "track_index": track_index,
+        "start_beats": start_beats,
+        "end_beats": end_beats
+    })
     import json
     return json.dumps(result, indent=2)
 
 @mcp.tool()
-def list_media_items(track_index: int) -> str:
-    """List ALL media items (Audio and MIDI) on a track with their types and positions."""
-    result = ipc.send_command("list_media_items", {"track_index": track_index})
+def list_media_items(track_index: int, start_beats: Optional[float] = None, end_beats: Optional[float] = None) -> str:
+    """List ALL media items (Audio and MIDI) on a track with their types and positions, optionally filtered by range."""
+    result = ipc.send_command("list_media_items", {
+        "track_index": track_index,
+        "start_beats": start_beats,
+        "end_beats": end_beats
+    })
     import json
     return json.dumps(result, indent=2)
 
@@ -167,16 +175,13 @@ async def get_track_info(track_index: int) -> str:
     return json.dumps(result, indent=2)
 
 @mcp.tool()
-async def describe_track(track_index: int) -> str:
-    """Get a musical summary of the track (type, range, density)."""
-    result = ipc.send_command("describe_track", {"track_index": track_index})
-    import json
-    return json.dumps(result, indent=2)
-
-@mcp.tool()
-async def list_midi_items(track_index: int) -> str:
-    """List all MIDI items on a track with their positions and event counts."""
-    result = ipc.send_command("list_midi_items", {"track_index": track_index})
+async def describe_track(track_index: int, start_beats: Optional[float] = None, end_beats: Optional[float] = None) -> str:
+    """Get a musical summary of the track (type, range, density), optionally filtered by range."""
+    result = ipc.send_command("describe_track", {
+        "track_index": track_index,
+        "start_beats": start_beats,
+        "end_beats": end_beats
+    })
     import json
     return json.dumps(result, indent=2)
 
@@ -188,9 +193,9 @@ async def get_project_midi_overview() -> str:
     return json.dumps(result, indent=2)
 
 @mcp.tool()
-async def get_track_midi(track_index: int) -> str:
+async def get_track_midi(track_index: int, start_beats: Optional[float] = None, end_beats: Optional[float] = None) -> str:
     """
-    Read all MIDI data from a track in RMID format.
+    Read MIDI data from a track in RMID format, optionally filtered by range.
     
     RMID Format:
     - Note line: [Pitch] [StartBeats] [DurBeats] [Velocity]
@@ -202,7 +207,11 @@ async def get_track_midi(track_index: int) -> str:
       G4  0  1.0  92
       CC64: 0=127 3.9=0
     """
-    result = ipc.send_command("get_track_midi", {"track_index": track_index})
+    result = ipc.send_command("get_track_midi", {
+        "track_index": track_index,
+        "start_beats": start_beats,
+        "end_beats": end_beats
+    })
     import json
     if isinstance(result, dict): return json.dumps(result, indent=2)
     return result
