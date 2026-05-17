@@ -378,7 +378,37 @@ function Tools.get_track_midi(args)
     return RMID.serialize_rmid({ bpm = math.floor(reaper.Master_GetTempo()), tracks = { track_data } })
 end
 
+function Tools.get_midi_item(args)
+    local tr = reaper.GetTrack(0, (args.track_index or 1) - 1)
+    if not tr then return { error = "Track not found" } end
+    local item = reaper.GetTrackMediaItem(tr, (args.item_index or 1) - 1)
+    if not item then return { error = "Item not found" } end
+    local take = reaper.GetActiveTake(item)
+    if not take or not reaper.TakeIsMIDI(take) then return { error = "Item is not a MIDI item" } end
+    
+    reaper.MIDI_Sort(take)
+    local _, tr_name = reaper.GetTrackName(tr)
+    local track_data = { name = tr_name, items = {} }
+    local pos = reaper.GetMediaItemInfo_Value(item, "D_POSITION")
+    local len = reaper.GetMediaItemInfo_Value(item, "D_LENGTH")
+    local start_qn = reaper.TimeMap_timeToQN(pos)
+    local r_item = { pos = start_qn, len = reaper.TimeMap_timeToQN(pos + len) - start_qn, notes = {}, cc = {} }
+    
+    local _, notecount, cccount = reaper.MIDI_CountEvts(take)
+    for n = 0, notecount - 1 do
+        local _, _, muted, startppq, endppq, chan, pitch, vel = reaper.MIDI_GetNote(take, n)
+        if not muted then
+            local n_s = reaper.MIDI_GetProjQNFromPPQPos(take, startppq)
+            local n_e = reaper.MIDI_GetProjQNFromPPQPos(take, endppq)
+            table.insert(r_item.notes, { pitch = RMID.get_pitch_name(pitch), start = n_s - start_qn, dur = n_e - n_s, vel = vel })
+        end
+    end
+    table.insert(track_data.items, r_item)
+    return RMID.serialize_rmid({ bpm = math.floor(reaper.Master_GetTempo()), tracks = { track_data } })
+end
+
 function Tools.set_midi_item(args)
+
     local tr = reaper.GetTrack(0, (args.track_index or 1) - 1)
     local item = reaper.GetTrackMediaItem(tr, (args.item_index or 1) - 1)
     if not item then return { error = "Item not found" } end
@@ -763,6 +793,110 @@ function Tools.set_track_fx_pins(args)
     local ok = reaper.TrackFX_SetPinMappings(tr, fx_idx, is_output, pin_idx, low, high)
     return { status = ok and "ok" or "error" }
 end
+
+function Tools.get_time_selection(args)
+    local start_t, end_t = reaper.GetSet_LoopTimeRange(false, false, 0, 0, false)
+    local has_sel = (start_t ~= end_t)
+    local start_b = reaper.TimeMap_timeToQN(start_t)
+    local end_b = reaper.TimeMap_timeToQN(end_t)
+    return {
+        has_selection = has_sel,
+        start_seconds = start_t,
+        end_seconds = end_t,
+        start_beats = start_b,
+        end_beats = end_b
+    }
+end
+
+function Tools.list_markers(args)
+    local markers = {}
+    local idx = 0
+    while true do
+        local retval, isrgn, pos, rgnend, name, markrgnindexnumber = reaper.EnumProjectMarkers3(0, idx)
+        if retval == 0 then break end
+        
+        local m = {
+            id = markrgnindexnumber,
+            name = name,
+            pos_seconds = pos,
+            pos_beats = reaper.TimeMap_timeToQN(pos),
+            is_region = isrgn
+        }
+        if isrgn then
+            m.end_seconds = rgnend
+            m.end_beats = reaper.TimeMap_timeToQN(rgnend)
+        end
+        table.insert(markers, m)
+        idx = idx + 1
+    end
+    return markers
+end
+
+function Tools.create_marker(args)
+    local is_beats = args.is_beats ~= false
+    local is_region = args.is_region == true
+    local pos = args.position or 0
+    local rgnend = args.end_position or 0
+    
+    if is_beats then
+        pos = reaper.TimeMap_QNToTime(pos)
+        rgnend = reaper.TimeMap_QNToTime(rgnend)
+    end
+    
+    local name = args.name or ""
+    local mark_id = reaper.AddProjectMarker2(0, is_region, pos, rgnend, name, -1, 0)
+    
+    return { status = "ok", id = mark_id }
+end
+
+function Tools.get_selected_items(args)
+    local count = reaper.CountSelectedMediaItems(0)
+    local items = {}
+    for i = 0, count - 1 do
+        local item = reaper.GetSelectedMediaItem(0, i)
+        if item then
+            local tr = reaper.GetMediaItem_Track(item)
+            local track_idx = math.floor(reaper.GetMediaTrackInfo_Value(tr, "IP_TRACKNUMBER"))
+            
+            local item_idx = -1
+            for j = 0, reaper.CountTrackMediaItems(tr) - 1 do
+                if reaper.GetTrackMediaItem(tr, j) == item then
+                    item_idx = j + 1
+                    break
+                end
+            end
+            
+            local take = reaper.GetActiveTake(item)
+            local pos = reaper.GetMediaItemInfo_Value(item, "D_POSITION")
+            local len = reaper.GetMediaItemInfo_Value(item, "D_LENGTH")
+            local start_qn = reaper.TimeMap_timeToQN(pos)
+            local end_qn = reaper.TimeMap_timeToQN(pos + len)
+            local name = "[Unnamed]"
+            local itype = "Audio"
+            
+            if take then
+                local _, tname = reaper.GetSetMediaItemTakeInfo_String(take, "P_NAME", "", false)
+                name = tname
+                if reaper.TakeIsMIDI(take) then
+                    itype = "MIDI"
+                end
+            end
+            
+            table.insert(items, {
+                track_index = track_idx,
+                item_index = item_idx,
+                name = name,
+                type = itype,
+                pos_beats = start_qn,
+                len_beats = end_qn - start_qn,
+                pos_seconds = pos,
+                len_seconds = len
+            })
+        end
+    end
+    return items
+end
+
 
 local function main()
     local f = io.open(cmd_file, "r")

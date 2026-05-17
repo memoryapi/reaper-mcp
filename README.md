@@ -49,12 +49,19 @@ The project consists of two main components:
 - `set_track_send_info(track_index, send_index, ...)`: Update volume, pan, mute, or channel mapping.
 - `delete_track_send(track_index, send_index)`: Remove a send.
 
+### Context & Selections
+- `get_time_selection()`: Get start/end bounds of loop/time range selection (in seconds and beats).
+- `list_markers()`: List all markers and regions with indices, beats, and names.
+- `create_marker(name, position, is_beats, is_region, end_position)`: Add a new marker or region to the timeline.
+- `get_selected_items()`: List all currently selected media items (Audio/MIDI) and their track indices.
+
 ### Media & Composition
 - `list_media_items(track_index)`: List **all** timeline objects (Audio and MIDI) with their type and position.
 - `list_midi_items(track_index)`: List only MIDI items with detailed note/CC counts.
 - `move_media_item(track_index, item_index, new_pos_beats)`: Move any item (Audio or MIDI) to a new position.
 - `delete_media_item(track_index, item_index)`: Remove any item from the timeline.
-- `get_track_midi(track_index)`: Read MIDI data in RMID format (MIDI only).
+- `get_track_midi(track_index)`: Read MIDI data in RMID format for all items on a track.
+- `get_midi_item(track_index, item_index)`: Read MIDI data in RMID format for a single specific clip.
 - `insert_midi_item(track_index, rmid)`: Add new MIDI data.
 - `set_midi_item(track_index, item_index, rmid)`: Replace MIDI content.
 - `copy_media_item(...)`: Copy items (supports MIDI pooling for MIDI).

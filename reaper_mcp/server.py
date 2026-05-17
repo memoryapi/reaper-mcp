@@ -208,6 +208,18 @@ async def get_track_midi(track_index: int) -> str:
     return result
 
 @mcp.tool()
+async def get_midi_item(track_index: int, item_index: int) -> str:
+    """
+    Read MIDI data from a single specific MIDI item/clip in RMID format.
+    Provides targeted access without fetching all MIDI data on the track.
+    """
+    result = ipc.send_command("get_midi_item", {"track_index": track_index, "item_index": item_index})
+    import json
+    if isinstance(result, dict): return json.dumps(result, indent=2)
+    return result
+
+@mcp.tool()
+
 def set_midi_item(track_index: int, item_index: int, rmid: str) -> str:
     """
     [WARNING: DESTRUCTIVE] Replaces the MIDI content INSIDE a specific existing item.
@@ -403,6 +415,56 @@ async def set_track_fx_pins(track_index: int, fx_index: int, is_output: bool, pi
         "pin_index": pin_index,
         "channels": channels
     })
+    import json
+    return json.dumps(result, indent=2)
+
+@mcp.tool()
+async def get_time_selection() -> str:
+    """
+    Get the active timeline selection (loop / time range selection).
+    Returns start/end bounds in both seconds and beats, and indicates if a selection exists.
+    """
+    result = ipc.send_command("get_time_selection", {})
+    import json
+    return json.dumps(result, indent=2)
+
+@mcp.tool()
+async def list_markers() -> str:
+    """
+    List all project markers and regions, including their ID, name, position in seconds and beats,
+    and end position (if it is a region).
+    """
+    result = ipc.send_command("list_markers", {})
+    import json
+    return json.dumps(result, indent=2)
+
+@mcp.tool()
+async def create_marker(name: str, position: float, is_beats: bool = True, is_region: bool = False, end_position: float = 0.0) -> str:
+    """
+    Create a project marker or region.
+    - name: The text label for the marker or region.
+    - position: The start position in beats/quarter notes (if is_beats is True) or seconds.
+    - is_beats: If True, position is measured in beats; otherwise in seconds. Default is True.
+    - is_region: If True, creates a region spanning from position to end_position. Default is False.
+    - end_position: The end position of the region (beats or seconds). Only used if is_region is True.
+    """
+    result = ipc.send_command("create_marker", {
+        "name": name,
+        "position": position,
+        "is_beats": is_beats,
+        "is_region": is_region,
+        "end_position": end_position
+    })
+    import json
+    return json.dumps(result, indent=2)
+
+@mcp.tool()
+async def get_selected_items() -> str:
+    """
+    Get metadata for all currently selected media items across all tracks in the project.
+    Provides track and item indexes, type (MIDI/Audio), position, and length.
+    """
+    result = ipc.send_command("get_selected_items", {})
     import json
     return json.dumps(result, indent=2)
 
