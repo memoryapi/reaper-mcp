@@ -35,11 +35,14 @@ The project consists of two main components:
 - `set_track_color(track_index, r, g, b)`: Set track visual color.
 - `set_track_folder_depth(track_index, depth)`: Manage folder hierarchies (1=start, 0=normal, -1=end).
 - `set_track_channels(track_index, num_channels)`: Set total audio channels (e.g., 4 or 6 for sidechaining).
+- `set_track_mute(track_index, mute)`: Cleanly mute or unmute a track by its 1-based index.
+- `set_track_solo(track_index, solo)`: Cleanly solo or unsolo a track by its 1-based index.
+- `list_plugin_manufacturers()`: List unique plugin manufacturers installed on the system.
 - `list_vsts(filter)`: Search for installed VST plugins.
 - `add_fx(track_index, fx_name)`: Add an FX/VST to a track.
 - `delete_track_fx(track_index, fx_index)`: Remove an FX.
 - `list_track_fx_params(track_index, fx_index)`: List all parameters for a specific FX, including current values.
-- `set_track_fx_param(track_index, fx_index, param_index, value)`: Set a parameter value (normalized 0.0 to 1.0). For dropdowns, use steps (e.g., 0.0, 0.5, 1.0).
+- `set_track_fx_param(track_index, fx_index, param_index, value)`: Set a parameter value (normalized 0.0 to 1.0).
 - `get_track_fx_pins(track_index, fx_index)`: List the input/output pin mappings for an FX.
 - `set_track_fx_pins(track_index, fx_index, is_output, pin_index, channels)`: Configure which track channels map to which plugin pins.
 
@@ -60,6 +63,14 @@ The project consists of two main components:
 - `list_midi_items(track_index, start_beats, end_beats)`: List only MIDI items with detailed note/CC counts, optionally filtered by range.
 - `move_media_item(track_index, item_index, new_pos_beats)`: Move any item (Audio or MIDI) to a new position.
 - `delete_media_item(track_index, item_index)`: Remove any item from the timeline.
+- `split_media_item(track_index, item_index, position_beats)`: Split a media item at a specific beat position.
+- `set_media_item_length(track_index, item_index, length_beats)`: Set the length of a specific media item in beats.
+- `set_media_item_take_offset(track_index, item_index, offset_beats)`: Set the playback start offset of a media item in beats.
+- `set_media_item_playrate(track_index, item_index, playrate)`: Set the playback speed (playrate) of a specific media item.
+- `set_media_item_pitch(track_index, item_index, pitch)`: Set the pitch shift of a specific media item in semitones.
+- `set_media_item_fades(track_index, item_index, fade_in_beats, fade_out_beats)`: Apply fade-in and fade-out times in beats to a media item.
+- `insert_automation_point(track_index, envelope_name, position_beats, value)`: Insert an envelope automation point.
+- `check_overlapping_items(tolerance_beats)`: Analyze tracks and report any overlapping audio/MIDI clips.
 - `get_track_midi(track_index, start_beats, end_beats)`: Read MIDI data in RMID format, optionally filtered by range.
 - `get_midi_item(track_index, item_index)`: Read MIDI data in RMID format for a single specific clip.
 - `insert_midi_item(track_index, rmid)`: Add new MIDI data.

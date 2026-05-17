@@ -965,6 +965,261 @@ function Tools.get_selected_items(args)
     return items
 end
 
+function Tools.split_media_item(args)
+    local tr = reaper.GetTrack(0, (args.track_index or 1) - 1)
+    if not tr then return { error = "Track not found" } end
+    local item = reaper.GetTrackMediaItem(tr, (args.item_index or 1) - 1)
+    if not item then return { error = "Item not found" } end
+    
+    local pos = args.position_beats or 0
+    local t = reaper.TimeMap_QNToTime(pos)
+    
+    local new_item = reaper.SplitMediaItem(item, t)
+    reaper.UpdateArrange()
+    return { status = "ok", split_created = new_item ~= nil }
+end
+
+function Tools.set_media_item_length(args)
+    local tr = reaper.GetTrack(0, (args.track_index or 1) - 1)
+    if not tr then return { error = "Track not found" } end
+    local item = reaper.GetTrackMediaItem(tr, (args.item_index or 1) - 1)
+    if not item then return { error = "Item not found" } end
+    
+    local len = args.length_beats or 1
+    
+    local pos_sec = reaper.GetMediaItemInfo_Value(item, "D_POSITION")
+    local start_qn = reaper.TimeMap_timeToQN(pos_sec)
+    local end_sec = reaper.TimeMap_QNToTime(start_qn + len)
+    local len_sec = end_sec - pos_sec
+    
+    reaper.SetMediaItemInfo_Value(item, "D_LENGTH", len_sec)
+    reaper.UpdateArrange()
+    return { status = "ok" }
+end
+
+function Tools.set_media_item_take_offset(args)
+    local tr = reaper.GetTrack(0, (args.track_index or 1) - 1)
+    if not tr then return { error = "Track not found" } end
+    local item = reaper.GetTrackMediaItem(tr, (args.item_index or 1) - 1)
+    if not item then return { error = "Item not found" } end
+    local take = reaper.GetActiveTake(item)
+    if not take then return { error = "No active take found" } end
+    
+    local offset_beats = args.offset_beats or 0
+    local pos_sec = reaper.GetMediaItemInfo_Value(item, "D_POSITION")
+    local start_qn = reaper.TimeMap_timeToQN(pos_sec)
+    local offset_sec = reaper.TimeMap_QNToTime(start_qn + offset_beats) - pos_sec
+    
+    reaper.SetMediaItemTakeInfo_Value(take, "D_STARTOFFS", offset_sec)
+    reaper.UpdateArrange()
+    return { status = "ok" }
+end
+
+function Tools.set_media_item_playrate(args)
+    local tr = reaper.GetTrack(0, (args.track_index or 1) - 1)
+    if not tr then return { error = "Track not found" } end
+    local item = reaper.GetTrackMediaItem(tr, (args.item_index or 1) - 1)
+    if not item then return { error = "Item not found" } end
+    local take = reaper.GetActiveTake(item)
+    if not take then return { error = "No active take found" } end
+    
+    local rate = args.playrate or 1.0
+    reaper.SetMediaItemTakeInfo_Value(take, "D_PLAYRATE", rate)
+    reaper.UpdateArrange()
+    return { status = "ok" }
+end
+
+function Tools.set_media_item_pitch(args)
+    local tr = reaper.GetTrack(0, (args.track_index or 1) - 1)
+    if not tr then return { error = "Track not found" } end
+    local item = reaper.GetTrackMediaItem(tr, (args.item_index or 1) - 1)
+    if not item then return { error = "Item not found" } end
+    local take = reaper.GetActiveTake(item)
+    if not take then return { error = "No active take found" } end
+    
+    local pitch = args.pitch or 0.0
+    reaper.SetMediaItemTakeInfo_Value(take, "D_PITCH", pitch)
+    reaper.UpdateArrange()
+    return { status = "ok" }
+end
+
+function Tools.set_media_item_fades(args)
+    local tr = reaper.GetTrack(0, (args.track_index or 1) - 1)
+    if not tr then return { error = "Track not found" } end
+    local item = reaper.GetTrackMediaItem(tr, (args.item_index or 1) - 1)
+    if not item then return { error = "Item not found" } end
+    
+    local fade_in_beats = args.fade_in_beats or 0.0
+    local fade_out_beats = args.fade_out_beats or 0.0
+    
+    local pos_sec = reaper.GetMediaItemInfo_Value(item, "D_POSITION")
+    local len_sec = reaper.GetMediaItemInfo_Value(item, "D_LENGTH")
+    local start_qn = reaper.TimeMap_timeToQN(pos_sec)
+    
+    local start_t = pos_sec
+    local in_t = reaper.TimeMap_QNToTime(start_qn + fade_in_beats)
+    local in_len = in_t - start_t
+    
+    local end_qn = reaper.TimeMap_timeToQN(pos_sec + len_sec)
+    local out_t = reaper.TimeMap_QNToTime(end_qn - fade_out_beats)
+    local out_len = (pos_sec + len_sec) - out_t
+    
+    reaper.SetMediaItemInfo_Value(item, "D_FADEINLEN", in_len > 0 and in_len or 0)
+    reaper.SetMediaItemInfo_Value(item, "D_FADEOUTLEN", out_len > 0 and out_len or 0)
+    
+    reaper.UpdateArrange()
+    return { status = "ok" }
+end
+
+function Tools.set_track_mute(args)
+    local tr = reaper.GetTrack(0, (args.track_index or 1) - 1)
+    if not tr then return { error = "Track not found" } end
+    local mute = args.mute == true and 1 or 0
+    reaper.SetMediaTrackInfo_Value(tr, "B_MUTE", mute)
+    reaper.UpdateArrange()
+    return { status = "ok" }
+end
+
+function Tools.set_track_solo(args)
+    local tr = reaper.GetTrack(0, (args.track_index or 1) - 1)
+    if not tr then return { error = "Track not found" } end
+    local solo = args.solo == true and 1 or 0
+    reaper.SetMediaTrackInfo_Value(tr, "I_SOLO", solo)
+    reaper.UpdateArrange()
+    return { status = "ok" }
+end
+
+function Tools.insert_automation_point(args)
+    local tr = reaper.GetTrack(0, (args.track_index or 1) - 1)
+    if not tr then return { error = "Track not found" } end
+    
+    local env_name = args.envelope_name
+    if not env_name or env_name == "" then return { error = "Missing envelope_name" } end
+    
+    local pos = args.position_beats or 0
+    local val = args.value or 0.0
+    local t = reaper.TimeMap_QNToTime(pos)
+    
+    local env = reaper.GetTrackEnvelopeByName(tr, env_name)
+    if not env then
+        for i = 0, reaper.CountTrackEnvelopes(tr) - 1 do
+            local temp_env = reaper.GetTrackEnvelope(tr, i)
+            local _, temp_name = reaper.GetEnvelopeName(temp_env, "")
+            if temp_name:lower():find(env_name:lower(), 1, true) then
+                env = temp_env
+                break
+            end
+        end
+    end
+    
+    if not env then return { error = "Envelope not found: " .. env_name } end
+    
+        local ok = reaper.InsertEnvelopePoint(env, t, val, 0, 0, false, true)
+    reaper.Envelope_SortPoints(env)
+    reaper.UpdateArrange()
+    return { status = ok and "ok" or "error" }
+end
+
+function Tools.list_plugin_manufacturers(args)
+    local resource_path = reaper.GetResourcePath()
+    local files = { resource_path .. "/reaper-vstplugins64.ini", resource_path .. "/reaper-vstplugins.ini" }
+    
+    local manufacturers_set = {}
+    
+    local function is_valid_m(m)
+        local ml = m:lower()
+        if ml:match("%d+ch") or ml:match("%d+%s*out") or ml:match("%d+->") then
+            return false
+        end
+        local bad = { "mono", "stereo", "x64", "x86", "64bit", "32bit", "64 bit", "32 bit", "m/s", "sidechain" }
+        for _, w in ipairs(bad) do
+            if ml == w then return false end
+        end
+        if ml:match("^%d+$") then return false end
+        return true
+    end
+    
+    for _, path in ipairs(files) do
+        local f = io.open(path, "r")
+        if f then
+            for line in f:lines() do
+                local name = line:match(".-=.-,([^,]+)$") or line:match("{.-,([^,]+)$")
+                if name then
+                    name = name:gsub("!!!VSTi", "")
+                    local manufacturer = name:match("%(([^%)]+)%)%s*$")
+                    if manufacturer and manufacturer ~= "" and is_valid_m(manufacturer) then
+                        manufacturers_set[manufacturer] = true
+                    end
+                end
+            end
+            f:close()
+        end
+    end
+    
+    local list = {}
+    for m, _ in pairs(manufacturers_set) do
+        table.insert(list, m)
+    end
+    table.sort(list)
+    return list
+end
+
+
+function Tools.check_overlapping_items(args)
+    local overlaps = {}
+    local num_tracks = reaper.CountTracks(0)
+    local tolerance = args.tolerance_beats or 0.01
+    
+    for t_idx = 0, num_tracks - 1 do
+        local tr = reaper.GetTrack(0, t_idx)
+        local _, tr_name = reaper.GetTrackName(tr)
+        local num_items = reaper.CountTrackMediaItems(tr)
+        
+        local items = {}
+        for i = 0, num_items - 1 do
+            local item = reaper.GetTrackMediaItem(tr, i)
+            local pos_sec = reaper.GetMediaItemInfo_Value(item, "D_POSITION")
+            local len_sec = reaper.GetMediaItemInfo_Value(item, "D_LENGTH")
+            local start_qn = reaper.TimeMap_timeToQN(pos_sec)
+            local end_qn = reaper.TimeMap_timeToQN(pos_sec + len_sec)
+            
+            local name = "[Unnamed]"
+            local take = reaper.GetActiveTake(item)
+            if take then
+                local _, tname = reaper.GetSetMediaItemTakeInfo_String(take, "P_NAME", "", false)
+                name = tname
+            end
+            
+            table.insert(items, {
+                index = i + 1,
+                name = name,
+                start_beats = start_qn,
+                end_beats = end_qn,
+                len_beats = end_qn - start_qn
+            })
+        end
+        
+        table.sort(items, function(a, b) return a.start_beats < b.start_beats end)
+        
+        for i = 1, #items - 1 do
+            local item1 = items[i]
+            local item2 = items[i+1]
+            
+            if item2.start_beats < item1.end_beats - tolerance then
+                local overlap_len = item1.end_beats - item2.start_beats
+                table.insert(overlaps, {
+                    track_index = t_idx + 1,
+                    track_name = tr_name,
+                    item1 = item1,
+                    item2 = item2,
+                    overlap_beats = overlap_len
+                })
+            end
+        end
+    end
+    
+    return overlaps
+end
 
 local function main()
     local f = io.open(cmd_file, "r")

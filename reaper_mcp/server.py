@@ -252,7 +252,14 @@ def delete_midi_item(track_index: int, item_index: int) -> str:
 async def list_vsts(filter: Optional[str] = None) -> str:
     """
     List all installed VST plugins.
-    Filter by name if provided.
+    Filter by name or manufacturer if provided.
+    
+    RECOMMENDATION:
+    If no filter is provided, listing all plugins can yield hundreds of results.
+    To work efficiently:
+    1. You are fully free to query the entire list if needed by calling `list_vsts()`.
+    2. Alternatively, you can use `list_plugin_manufacturers()` first to get a quick, high-level view of who developed the plugins on this system.
+    3. You can then search specific brands or names directly using a filter (e.g. `list_vsts(filter="BABY Audio")` or `list_vsts(filter="reacomp")`).
     """
     result = ipc.send_command("list_vsts", {"filter": filter})
     import json
@@ -477,5 +484,129 @@ async def get_selected_items() -> str:
     import json
     return json.dumps(result, indent=2)
 
+@mcp.tool()
+async def split_media_item(track_index: int, item_index: int, position_beats: float) -> str:
+    """Split a media item at a specific beat position, creating a new item."""
+    result = ipc.send_command("split_media_item", {
+        "track_index": track_index,
+        "item_index": item_index,
+        "position_beats": position_beats
+    })
+    import json
+    return json.dumps(result, indent=2)
+
+@mcp.tool()
+async def set_media_item_length(track_index: int, item_index: int, length_beats: float) -> str:
+    """Set the length of a specific media item in beats."""
+    result = ipc.send_command("set_media_item_length", {
+        "track_index": track_index,
+        "item_index": item_index,
+        "length_beats": length_beats
+    })
+    import json
+    return json.dumps(result, indent=2)
+
+@mcp.tool()
+async def set_media_item_take_offset(track_index: int, item_index: int, offset_beats: float) -> str:
+    """Set the playback start offset (take offset) of a media item in beats."""
+    result = ipc.send_command("set_media_item_take_offset", {
+        "track_index": track_index,
+        "item_index": item_index,
+        "offset_beats": offset_beats
+    })
+    import json
+    return json.dumps(result, indent=2)
+
+@mcp.tool()
+async def set_media_item_playrate(track_index: int, item_index: int, playrate: float) -> str:
+    """Set the playrate (playback speed) of a specific media item (e.g. 0.5 for half speed)."""
+    result = ipc.send_command("set_media_item_playrate", {
+        "track_index": track_index,
+        "item_index": item_index,
+        "playrate": playrate
+    })
+    import json
+    return json.dumps(result, indent=2)
+
+@mcp.tool()
+async def set_media_item_pitch(track_index: int, item_index: int, pitch: float) -> str:
+    """Set the pitch shift of a specific media item in semitones (e.g., -12.0 for octave down)."""
+    result = ipc.send_command("set_media_item_pitch", {
+        "track_index": track_index,
+        "item_index": item_index,
+        "pitch": pitch
+    })
+    import json
+    return json.dumps(result, indent=2)
+
+@mcp.tool()
+async def set_media_item_fades(track_index: int, item_index: int, fade_in_beats: float, fade_out_beats: float) -> str:
+    """Apply fade-in and fade-out times in beats to a specific media item."""
+    result = ipc.send_command("set_media_item_fades", {
+        "track_index": track_index,
+        "item_index": item_index,
+        "fade_in_beats": fade_in_beats,
+        "fade_out_beats": fade_out_beats
+    })
+    import json
+    return json.dumps(result, indent=2)
+
+@mcp.tool()
+async def set_track_mute(track_index: int, mute: bool) -> str:
+    """Cleanly mute or unmute a track by its 1-based index."""
+    result = ipc.send_command("set_track_mute", {
+        "track_index": track_index,
+        "mute": mute
+    })
+    import json
+    return json.dumps(result, indent=2)
+
+@mcp.tool()
+async def set_track_solo(track_index: int, solo: bool) -> str:
+    """Cleanly solo or unsolo a track by its 1-based index."""
+    result = ipc.send_command("set_track_solo", {
+        "track_index": track_index,
+        "solo": solo
+    })
+    import json
+    return json.dumps(result, indent=2)
+
+@mcp.tool()
+async def insert_automation_point(track_index: int, envelope_name: str, position_beats: float, value: float) -> str:
+    """Insert an automation envelope point on a track (e.g. for Volume, Pan, or VST FX parameters)."""
+    result = ipc.send_command("insert_automation_point", {
+        "track_index": track_index,
+        "envelope_name": envelope_name,
+        "position_beats": position_beats,
+        "value": value
+    })
+    import json
+    return json.dumps(result, indent=2)
+
+@mcp.tool()
+async def list_plugin_manufacturers() -> str:
+    """
+    List unique plugin manufacturers installed on the system (e.g. Cockos, BABY Audio, FabFilter, Arturia, Waves).
+    
+    RECOMMENDATION:
+    1. Run this tool if you need a quick, lightweight summary of which VST companies are installed on the user's computer.
+    2. This returns a compact list of developers.
+    3. Once you identify a developer (e.g. "BABY Audio"), you can call `list_vsts(filter="BABY Audio")` to list their specific plugins cheaply and quickly.
+    """
+    result = ipc.send_command("list_plugin_manufacturers", {})
+    import json
+    return json.dumps(result, indent=2)
+
+@mcp.tool()
+async def check_overlapping_items(tolerance_beats: float = 0.01) -> str:
+    """Analyze the project track-by-track and check for overlapping audio or MIDI clips."""
+    result = ipc.send_command("check_overlapping_items", {
+        "tolerance_beats": tolerance_beats
+    })
+    import json
+    return json.dumps(result, indent=2)
+
 if __name__ == "__main__":
     mcp.run(transport="stdio")
+
+
